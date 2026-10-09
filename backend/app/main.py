@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -6,7 +7,24 @@ from sqlalchemy.exc import OperationalError as SAOperationalError
 from contextlib import asynccontextmanager
 from app.database import engine, Base, SessionLocal
 from app.config import get_settings
-from app.api import auth, admin, regulatory, business, workflow, sla, officer, document, inspection, compliance, analytics
+from app.api import (
+    auth,
+    admin,
+    regulatory,
+    business,
+    project,
+    workflow,
+    sla,
+    officer,
+    document,
+    inspection,
+    compliance,
+    analytics,
+    query,
+    readiness,
+    notification,
+    radar,
+)
 from app.seed import seed_demo_users, seed_demo_scenario
 
 settings = get_settings()
@@ -14,15 +32,16 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create all tables on startup
-    Base.metadata.create_all(bind=engine)
-    # Seed demo users and Scenario C demo data if running in development
-    if settings.is_development:
-        db = SessionLocal()
-        try:
-            seed_demo_scenario(db)
-        finally:
-            db.close()
+    # Create all tables on startup if not testing
+    if not os.environ.get("PYTEST_CURRENT_TEST"):
+        Base.metadata.create_all(bind=engine)
+        # Seed demo users and Scenario C demo data if running in development
+        if settings.is_development:
+            db = SessionLocal()
+            try:
+                seed_demo_scenario(db)
+            finally:
+                db.close()
     yield
     # Shutdown: nothing to clean up for SQLite
 
@@ -74,6 +93,7 @@ app.include_router(auth.router)
 app.include_router(admin.router)
 app.include_router(regulatory.router)
 app.include_router(business.router)
+app.include_router(project.router)
 app.include_router(workflow.router)
 app.include_router(sla.router)
 app.include_router(officer.router)
@@ -81,6 +101,10 @@ app.include_router(document.router)
 app.include_router(inspection.router)
 app.include_router(compliance.router)
 app.include_router(analytics.router)
+app.include_router(query.router)
+app.include_router(readiness.router)
+app.include_router(notification.router)
+app.include_router(radar.router)
 
 
 @app.get("/")

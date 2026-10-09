@@ -7,6 +7,7 @@ import {
   getOfficerPendingDocuments,
   reviewDocument,
   downloadDocument,
+  createQuery,
   OfficerPendingDocumentItemUI,
 } from "@/lib/api";
 import { OfficerLayout } from "@/components/layout/OfficerLayout";
@@ -82,6 +83,23 @@ export default function OfficerScrutinyPage() {
     try {
       setSubmitting(true);
       await reviewDocument(selectedDoc.id, scrutinyDecision, scrutinyNote.trim() || undefined);
+
+      // If raising a query, issue a formal Department Query for the applicant's clarification center
+      if (scrutinyDecision === "QUERY_RAISED" && selectedDoc.application_id) {
+        try {
+          await createQuery({
+            application_id: selectedDoc.application_id,
+            approval_step_id: selectedDoc.approval_step_id || undefined,
+            subject: `Deficiency Query: ${selectedDoc.document_name}`,
+            query_details: scrutinyNote.trim(),
+            department: "MIDC Scrutiny Desk",
+            attachment_document_ids: [selectedDoc.id],
+          });
+        } catch (qErr) {
+          console.error("Formal query generation log:", qErr);
+        }
+      }
+
       setSelectedDoc(null);
       setScrutinyNote("");
       await loadData();

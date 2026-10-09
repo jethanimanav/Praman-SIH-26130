@@ -78,6 +78,7 @@ class WorkflowService:
         business: Business,
         user: User,
         title: Optional[str] = None,
+        project_id: Optional[int] = None,
     ) -> Application:
         """
         Creates an Application and its ApprovalStep records based on the confirmed discovery.
@@ -142,11 +143,20 @@ class WorkflowService:
             .first()
         )
         if existing_draft:
+            if project_id and not existing_draft.project_id:
+                existing_draft.project_id = project_id
+                db.commit()
             return existing_draft
+
+        # Determine target project ID
+        target_proj_id = project_id
+        if target_proj_id is None and business.projects:
+            target_proj_id = business.projects[0].id
 
         try:
             application = Application(
                 business_id=business.id,
+                project_id=target_proj_id,
                 applicant_id=user.id,
                 title=app_title,
                 status=ApplicationStatus.DRAFT,
@@ -200,6 +210,9 @@ class WorkflowService:
                 },
             )
 
+            from app.workflow.draft_service import DraftService
+            DraftService.ensure_initial_version(db, application, user)
+
             db.commit()
             db.refresh(application)
             return application
@@ -221,6 +234,16 @@ class WorkflowService:
                 detail=f"Cannot submit application in status {application.status.value}",
             )
 
+        # Check pre-submission technical readiness for blockers
+        from app.readiness.service import ReadinessService
+        readiness = ReadinessService.assess_application_readiness(db, application)
+        if not readiness.can_submit:
+            blocker_msgs = "; ".join(f"{b.title}" for b in readiness.items if b.is_blocking)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot submit application due to {readiness.blocker_count} validation blocker(s): {blocker_msgs}",
+            )
+
         application.status = ApplicationStatus.SUBMITTED
         application.submitted_at = ClockService.now()
         application.updated_at = ClockService.now()
@@ -236,6 +259,21 @@ class WorkflowService:
             previous_value={"status": ApplicationStatus.DRAFT.value},
             new_value={"status": ApplicationStatus.SUBMITTED.value},
         )
+
+        from app.notification.service import NotificationService
+        NotificationService.create_notification(
+            db=db,
+            user_id=application.applicant_id,
+            title="Application Submitted",
+            message=f"Application '{application.title}' has been successfully submitted for departmental scrutiny.",
+            event_type="APPLICATION_SUBMITTED",
+            severity="SUCCESS",
+            entity_type="application",
+            entity_id=str(application.id),
+            action_url=f"/applicant/workflow/{application.id}",
+            idempotency_key=f"app-submitted-{application.id}",
+        )
+
         db.commit()
         db.refresh(application)
         return application

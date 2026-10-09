@@ -36,7 +36,11 @@ import {
   getBusinesses,
   getApplications,
   createBusiness,
+  getProjects,
+  getProjectOverview,
   BusinessItem,
+  ProjectItem,
+  ProjectOverviewData,
   ApplicationDetailUI,
   getApplicationSLA,
   getApplicationEscalations,
@@ -55,8 +59,11 @@ export default function ApplicantDashboard() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Core Data
+  // Core Data & Project Workspace
   const [businesses, setBusinesses] = useState<BusinessItem[]>([]);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
+  const [overviewData, setOverviewData] = useState<ProjectOverviewData | null>(null);
   const [applications, setApplications] = useState<ApplicationDetailUI[]>([]);
 
   // Application sub-system states
@@ -87,30 +94,70 @@ export default function ApplicantDashboard() {
     loadApplicantData();
   }, [router]);
 
-  async function loadApplicantData() {
+  useEffect(() => {
+    function onProjectSwitched(e: any) {
+      if (e.detail?.projectId) {
+        loadApplicantData(e.detail.projectId);
+      }
+    }
+    window.addEventListener("project-switched", onProjectSwitched);
+    return () => window.removeEventListener("project-switched", onProjectSwitched);
+  }, []);
+
+  async function loadApplicantData(targetProjectId?: number) {
     setLoading(true);
     try {
-      const [bizList, appList] = await Promise.all([
+      const [bizList, projList] = await Promise.all([
         getBusinesses().catch(() => []),
-        getApplications().catch(() => []),
+        getProjects().catch(() => []),
       ]);
       setBusinesses(bizList);
-      setApplications(appList);
+      setProjects(projList);
 
-      if (appList.length > 0) {
-        const primaryApp = appList[0];
-        const [sla, escList, docs, insp, comp] = await Promise.all([
-          getApplicationSLA(primaryApp.id).catch(() => null),
-          getApplicationEscalations(primaryApp.id).catch(() => []),
-          getApplicationDocuments(primaryApp.id).catch(() => null),
-          getApplicationInspections(primaryApp.id).catch(() => null),
-          getComplianceCalendar(primaryApp.id).catch(() => null),
+      let currentProjId = targetProjectId;
+      if (!currentProjId && typeof window !== "undefined") {
+        const stored = localStorage.getItem("rop_active_project_id");
+        if (stored) currentProjId = Number(stored);
+      }
+      const matched = currentProjId ? projList.find((p) => p.id === currentProjId) : null;
+      const selected = matched || (projList.length > 0 ? projList[0] : null);
+      setActiveProject(selected);
+
+      if (selected) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("rop_active_project_id", String(selected.id));
+        }
+        const [overview, appList] = await Promise.all([
+          getProjectOverview(selected.id).catch(() => null),
+          getApplications(undefined, selected.id).catch(() => []),
         ]);
-        setSlaData(sla);
-        setEscalations(escList);
-        setDocData(docs);
-        setInspectionData(insp);
-        setComplianceData(comp);
+        setOverviewData(overview);
+        setApplications(appList);
+
+        if (appList.length > 0) {
+          const primaryApp = appList[0];
+          const [sla, escList, docs, insp, comp] = await Promise.all([
+            getApplicationSLA(primaryApp.id).catch(() => null),
+            getApplicationEscalations(primaryApp.id).catch(() => []),
+            getApplicationDocuments(primaryApp.id).catch(() => null),
+            getApplicationInspections(primaryApp.id).catch(() => null),
+            getComplianceCalendar(primaryApp.id).catch(() => null),
+          ]);
+          setSlaData(sla);
+          setEscalations(escList);
+          setDocData(docs);
+          setInspectionData(insp);
+          setComplianceData(comp);
+        } else {
+          setSlaData(null);
+          setEscalations([]);
+          setDocData(null);
+          setInspectionData(null);
+          setComplianceData(null);
+        }
+      } else {
+        setOverviewData(null);
+        setApplications([]);
       }
     } catch (err) {
       console.error("Failed to load applicant dashboard:", err);
@@ -286,53 +333,81 @@ export default function ApplicantDashboard() {
             </div>
           </div>
 
-          {/* Active Establishment Card (Screen 2 Reference) */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4.5 shadow-xs">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div className="w-11 h-11 rounded-lg bg-blue-700 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <Factory className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-base font-bold text-gray-900 truncate">
-                    {primaryBiz?.name || "Apex Precision Automotive Components Pvt Ltd"}
-                  </h2>
-                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                    <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                      Manufacturing
-                    </span>
-                    <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded flex items-center gap-1">
-                      <MapPin className="h-3 w-3 text-gray-400" />
-                      Pune, Maharashtra
-                    </span>
-                    <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                      In Progress
-                    </span>
+          {/* Active Establishment & Facility Card (Screen 2 Reference) */}
+          {activeProject ? (
+            <div className="bg-white rounded-xl border border-gray-200 p-4.5 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div className="w-11 h-11 rounded-lg bg-blue-700 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <Factory className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-bold text-gray-900 truncate">
+                        {activeProject.name}
+                      </h2>
+                      {activeProject.pollution_category && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                          {activeProject.pollution_category} Category
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 font-medium truncate mt-0.5">
+                      {overviewData?.company.name || primaryBiz?.name || "Apex Precision Automotive Components Pvt Ltd"}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                      <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                        {activeProject.sector || "Manufacturing"}
+                      </span>
+                      <span className="text-[11px] font-medium text-gray-600 bg-gray-100 px-2 py-0.5 rounded flex items-center gap-1">
+                        <MapPin className="h-3 w-3 text-gray-400" />
+                        {activeProject.district || "Pune"}, {activeProject.industrial_zone || "Maharashtra"}
+                      </span>
+                      <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                        {activeProject.status || "ACTIVE"}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <Link href="/applicant/project">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="text-xs h-8 font-semibold border-gray-300 text-gray-800 hover:bg-gray-50"
-                  >
-                    View Project
-                  </Button>
-                </Link>
-                <Button
-                  size="sm"
-                  onClick={() => setShowCreateModal(true)}
-                  className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-8"
-                >
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  New Project
-                </Button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Link href="/applicant/project">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="text-xs h-8 font-semibold border-gray-300 text-gray-800 hover:bg-gray-50"
+                    >
+                      Facility Details
+                    </Button>
+                  </Link>
+                  <Link href="/applicant/project?action=new">
+                    <Button
+                      size="sm"
+                      className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-8"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1" />
+                      Add Facility
+                    </Button>
+                  </Link>
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-dashed border-gray-300 p-6 text-center">
+              <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-700 mx-auto flex items-center justify-center mb-3">
+                <Factory className="h-6 w-6" />
+              </div>
+              <h3 className="text-base font-bold text-gray-900">No Industrial Facilities Configured</h3>
+              <p className="text-xs text-gray-500 max-w-md mx-auto mt-1 mb-4">
+                Define your facility location, industrial sector, power, and environmental parameters to generate and track statutory approvals.
+              </p>
+              <Link href="/applicant/project?action=new">
+                <Button size="sm" className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-9">
+                  <Plus className="h-4 w-4 mr-1.5" /> Set Up Facility Project
+                </Button>
+              </Link>
+            </div>
+          )}
 
           {/* 5-Metric Stat Strip (Screen 2 Reference) */}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">

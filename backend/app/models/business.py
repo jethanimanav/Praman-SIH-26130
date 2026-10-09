@@ -11,11 +11,22 @@ class Business(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
+
+    # Reusable Company-Level Information
+    registration_number = Column(String(100), nullable=True)  # CIN / LLPIN / Registration Number
+    entity_type = Column(String(100), nullable=True)  # Private Limited Company, Partnership, etc.
+    pan_number = Column(String(50), nullable=True)
+    gstin = Column(String(50), nullable=True)
+    contact_email = Column(String(255), nullable=True)
+    contact_phone = Column(String(50), nullable=True)
+    registered_office_address = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     user = relationship("User", back_populates="businesses")
+    projects = relationship("Project", back_populates="business", cascade="all, delete-orphan")
     regulatory_profile = relationship("RegulatoryProfile", back_populates="business", uselist=False, cascade="all, delete-orphan")
     applications = relationship("Application", back_populates="business", cascade="all, delete-orphan")
 
@@ -25,6 +36,7 @@ class RegulatoryProfile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, ForeignKey("businesses.id"), nullable=False, unique=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, unique=True, index=True)
 
     # Raw extracted profile from AI/Intake (JSON)
     extracted_data = Column(JSON, nullable=False, default=dict)
@@ -51,3 +63,4 @@ class RegulatoryProfile(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     business = relationship("Business", back_populates="regulatory_profile")
+    project = relationship("Project", back_populates="regulatory_profile")

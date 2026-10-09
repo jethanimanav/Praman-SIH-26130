@@ -15,6 +15,7 @@ import {
   RiskCategoryBadge,
   InspectionStatusBadge,
   ComplianceStatusBadge,
+  QueryStatusBadge,
 } from "@/components/StatusBadge";
 import {
   getApplication,
@@ -35,6 +36,14 @@ import {
   rescheduleJointInspection,
   getComplianceCalendar,
   submitComplianceFiling,
+  updateDraftApplication,
+  getApplicationVersions,
+  restoreApplicationVersion,
+  getQueries,
+  sendQueryMessage,
+  getApplicationReadiness,
+  ReadinessAssessmentUI,
+  ReadinessItemUI,
   ApplicationDetailUI,
   WorkflowGraphUIResponse,
   ApplicationSLAUIResponse,
@@ -47,6 +56,9 @@ import {
   JointInspectionItemUI,
   ComplianceCalendarResponseUI,
   ComplianceFilingItemUI,
+  ApplicationVersionItemUI,
+  DepartmentQueryItemUI,
+  QueryMessageItemUI,
 } from "@/lib/api";
 import {
   Building2,
@@ -125,11 +137,28 @@ export default function WorkflowDashboardPage() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [historyModalSlot, setHistoryModalSlot] = useState<DocumentSlotItemUI | null>(null);
 
-  // Scrutiny Query State
-  const [queryResponseText, setQueryResponseText] = useState("");
-  const [queryResponseFile, setQueryResponseFile] = useState<File | null>(null);
-  const [submittingQuery, setSubmittingQuery] = useState(false);
-  const [querySuccess, setQuerySuccess] = useState<string | null>(null);
+  // Phase 2 Draft & Versions State
+  const [versionsList, setVersionsList] = useState<ApplicationVersionItemUI[]>([]);
+  const [showVersionHistoryModal, setShowVersionHistoryModal] = useState<boolean>(false);
+  const [savingDraft, setSavingDraft] = useState<boolean>(false);
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  const [occConflict, setOccConflict] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState<string>("");
+  const [draftFormData, setDraftFormData] = useState<Record<string, any>>({});
+  const [restoringVersion, setRestoringVersion] = useState<boolean>(false);
+  const [selectedVersionSnapshot, setSelectedVersionSnapshot] = useState<ApplicationVersionItemUI | null>(null);
+
+  // Phase 2 Department Queries State
+  const [queriesList, setQueriesList] = useState<DepartmentQueryItemUI[]>([]);
+  const [loadingQueries, setLoadingQueries] = useState<boolean>(false);
+  const [queryReplyTexts, setQueryReplyTexts] = useState<Record<number, string>>({});
+  const [queryReplyDocIds, setQueryReplyDocIds] = useState<Record<number, number[]>>({});
+  const [submittingReply, setSubmittingReply] = useState<number | null>(null);
+  const [queryActionSuccess, setQueryActionSuccess] = useState<string | null>(null);
+
+  // Phase 3 Pre-Submission Readiness State
+  const [readinessData, setReadinessData] = useState<ReadinessAssessmentUI | null>(null);
+  const [showReadinessModal, setShowReadinessModal] = useState<boolean>(false);
 
   useEffect(() => {
     const session = getSession();
@@ -148,7 +177,7 @@ export default function WorkflowDashboardPage() {
     try {
       setLoading(true);
       setError(null);
-      const [app, graph, sla, esc, docs, risk, insp, cal] = await Promise.all([
+      const [app, graph, sla, esc, docs, risk, insp, cal, qList, ready] = await Promise.all([
         getApplication(id),
         getWorkflowGraph(id).catch(() => null),
         getApplicationSLA(id).catch(() => null),
@@ -157,6 +186,8 @@ export default function WorkflowDashboardPage() {
         getApplicationRiskAssessment(id).catch(() => null),
         getApplicationInspections(id).catch(() => null),
         getComplianceCalendar(id).catch(() => null),
+        getQueries({ application_id: id }).catch(() => []),
+        getApplicationReadiness(id).catch(() => null),
       ]);
       setAppData(app);
       setGraphData(graph);
@@ -166,6 +197,12 @@ export default function WorkflowDashboardPage() {
       setRiskData(risk);
       setInspectionsData(insp);
       setCalendarData(cal);
+      setQueriesList(qList);
+      setReadinessData(ready);
+      if (app) {
+        setDraftTitle(app.title || "");
+        setDraftFormData(app.form_data || {});
+      }
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
@@ -179,13 +216,15 @@ export default function WorkflowDashboardPage() {
   async function refreshState() {
     if (!applicationId) return;
     try {
-      const [app, graph, sla, esc, docs, insp] = await Promise.all([
+      const [app, graph, sla, esc, docs, insp, qList, ready] = await Promise.all([
         getApplication(applicationId),
         getWorkflowGraph(applicationId).catch(() => null),
         getApplicationSLA(applicationId).catch(() => null),
         getApplicationEscalations(applicationId).catch(() => []),
         getApplicationDocuments(applicationId).catch(() => null),
         getApplicationInspections(applicationId).catch(() => null),
+        getQueries({ application_id: applicationId }).catch(() => []),
+        getApplicationReadiness(applicationId).catch(() => null),
       ]);
       setAppData(app);
       setGraphData(graph);
@@ -193,13 +232,101 @@ export default function WorkflowDashboardPage() {
       setEscalations(esc);
       setDocsData(docs);
       setInspectionsData(insp);
+      setQueriesList(qList);
+      setReadinessData(ready);
     } catch (e) {
       console.error("State refresh error:", e);
     }
   }
 
+  async function handleSaveDraft() {
+    if (!applicationId || !appData) return;
+    try {
+      setSavingDraft(true);
+      setOccConflict(null);
+      const updated = await updateDraftApplication(applicationId, {
+        title: draftTitle.trim() || appData.title,
+        form_data: draftFormData,
+        expected_version: appData.version,
+        change_summary: "Applicant updated draft specifications",
+      });
+      setAppData(updated);
+      setDraftSavedAt(new Date().toLocaleTimeString());
+      setActionSuccess(`Draft saved successfully as v${updated.version}. Immutable snapshot created.`);
+    } catch (err: any) {
+      if (err.response?.status === 409) {
+        setOccConflict(
+          err.response?.data?.detail ||
+            `Concurrency conflict: Application is at version v${appData.version}, but draft was modified in another session. Please reload to inspect latest changes.`
+        );
+      } else {
+        alert(err.response?.data?.detail || "Failed to save draft.");
+      }
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  async function handleOpenVersionHistory() {
+    if (!applicationId) return;
+    try {
+      setShowVersionHistoryModal(true);
+      const versions = await getApplicationVersions(applicationId);
+      setVersionsList(versions);
+    } catch (e) {
+      console.error("Failed to load application versions:", e);
+    }
+  }
+
+  async function handleRestoreVersion(versionNumber: number) {
+    if (!applicationId) return;
+    try {
+      setRestoringVersion(true);
+      const updated = await restoreApplicationVersion(applicationId, versionNumber, {
+        change_summary: `Restored from historical version v${versionNumber}`,
+      });
+      setAppData(updated);
+      setDraftTitle(updated.title);
+      setDraftFormData(updated.form_data || {});
+      setShowVersionHistoryModal(false);
+      await refreshState();
+      setActionSuccess(`Successfully restored version v${versionNumber}. Created new draft revision v${updated.version}.`);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Failed to restore version snapshot.");
+    } finally {
+      setRestoringVersion(false);
+    }
+  }
+
+  async function handleSendQueryReply(queryId: number) {
+    const text = queryReplyTexts[queryId]?.trim();
+    if (!text) {
+      alert("Please provide a clarification response note before submitting.");
+      return;
+    }
+    try {
+      setSubmittingReply(queryId);
+      const updatedQuery = await sendQueryMessage(queryId, {
+        message_text: text,
+        attachment_document_ids: queryReplyDocIds[queryId] || [],
+      });
+      setQueriesList((prev) => prev.map((q) => (q.id === queryId ? updatedQuery : q)));
+      setQueryReplyTexts((prev) => ({ ...prev, [queryId]: "" }));
+      setQueryReplyDocIds((prev) => ({ ...prev, [queryId]: [] }));
+      setQueryActionSuccess(`Clarification submitted for ${updatedQuery.query_code}. Department review timer resumed.`);
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Failed to submit clarification message.");
+    } finally {
+      setSubmittingReply(null);
+    }
+  }
+
   async function handleSubmitApp() {
     if (!applicationId) return;
+    if (readinessData && readinessData.blocker_count > 0) {
+      setShowReadinessModal(true);
+      return;
+    }
     try {
       setActionLoading(true);
       const updated = await submitApplication(applicationId);
@@ -209,6 +336,9 @@ export default function WorkflowDashboardPage() {
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail || "Submission failed";
       alert(msg);
+      if (msg.includes("blocker") || msg.includes("Blocker") || msg.includes("readiness")) {
+        setShowReadinessModal(true);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -306,7 +436,7 @@ export default function WorkflowDashboardPage() {
   // Documents counts
   const totalRequiredDocs = docsData?.completeness.total_required || 4;
   const uploadedDocs = docsData?.completeness.uploaded_count || 2;
-  const queriesCount = docsData?.completeness.query_raised_count || (escalations.length > 0 ? 1 : 0);
+  const queriesCount = queriesList.length;
 
   // Is Approved View Active? (Screen 10)
   const isApprovedMode = appData?.status === "APPROVED" || previewCertificate;
@@ -385,6 +515,31 @@ export default function WorkflowDashboardPage() {
         </div>
       )}
 
+      {/* Concurrency Conflict Alert (OCC) */}
+      {occConflict && (
+        <div className="mb-5 p-4 rounded-lg bg-rose-50 border border-rose-300 text-xs text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-sm text-rose-950">Concurrency Conflict Detected</div>
+              <p className="mt-0.5 leading-relaxed">{occConflict}</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="bg-white border-rose-300 text-rose-900 hover:bg-rose-100 text-xs h-8 px-3 shrink-0"
+            onClick={() => {
+              setOccConflict(null);
+              if (applicationId) loadWorkflow(applicationId);
+            }}
+          >
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Reload Latest Version
+          </Button>
+        </div>
+      )}
+
       {/* Global Alerts */}
       {actionSuccess && (
         <div className="mb-5 p-3 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
@@ -406,31 +561,89 @@ export default function WorkflowDashboardPage() {
               <span className="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
                 #APP-2026-00{applicationId}
               </span>
+              <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                v{appData?.version || 1}
+              </span>
               <h1 className="text-xl font-bold text-gray-900 tracking-tight">
                 {appData?.title || "Siting Approval (MIDC)"}
               </h1>
               {appData && <ApplicationStatusBadge status={appData.status} />}
               {slaData && <SLAStatusBadge status={slaData.overall_sla_status} />}
+              {readinessData && (
+                <button
+                  type="button"
+                  onClick={() => setShowReadinessModal(true)}
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+                    readinessData.overall_status === "READY"
+                      ? "bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100"
+                      : readinessData.overall_status === "NEEDS_ATTENTION"
+                      ? "bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100"
+                      : "bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100"
+                  }`}
+                  title="Click to view Pre-Submission Readiness Assessment"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  <span>{readinessData.readiness_score_pct}% Ready</span>
+                  {readinessData.blocker_count > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                      {readinessData.blocker_count} Blocker{readinessData.blocker_count > 1 ? "s" : ""}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
-            <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-2">
+            <p className="text-xs text-gray-500 mt-1.5 flex items-center gap-2 flex-wrap">
               <span>Department: <strong className="text-gray-700">Maharashtra Industrial Development Corporation (MIDC)</strong></span>
               <span>•</span>
               <span>SLA Standard: <strong className="text-gray-700">30 Days (Maharashtra RTSA)</strong></span>
-              <span>•</span>
-              <span className="text-emerald-700 font-semibold">18 days remaining</span>
+              {draftSavedAt && (
+                <>
+                  <span>•</span>
+                  <span className="text-blue-700 font-medium">Last saved: {draftSavedAt}</span>
+                </>
+              )}
             </p>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
             {appData?.status === "DRAFT" && (
-              <Button
-                onClick={handleSubmitApp}
-                disabled={actionLoading}
-                className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-9 px-4 font-semibold shadow-xs"
-              >
-                Submit Application
-              </Button>
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowReadinessModal(true)}
+                  className="border-emerald-300 text-emerald-800 hover:bg-emerald-50 text-xs h-9 px-3 font-semibold flex items-center gap-1.5"
+                >
+                  <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                  Readiness Check
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSaveDraft}
+                  disabled={savingDraft || actionLoading}
+                  className="border-blue-300 text-blue-700 hover:bg-blue-50 text-xs h-9 px-3.5 font-semibold"
+                >
+                  {savingDraft ? "Saving..." : "Save Draft"}
+                </Button>
+                <Button
+                  onClick={handleSubmitApp}
+                  disabled={actionLoading}
+                  className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-9 px-4 font-semibold shadow-xs"
+                >
+                  Submit Application
+                </Button>
+              </>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleOpenVersionHistory}
+              className="text-xs h-9 border-gray-300 text-gray-700 hover:bg-gray-50 flex items-center gap-1.5"
+            >
+              <History className="h-3.5 w-3.5 text-gray-500" />
+              Version History ({appData?.version ? `v${appData.version}` : "v1"})
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -825,6 +1038,134 @@ export default function WorkflowDashboardPage() {
 
               {/* RIGHT COLUMN: Current Step, Dominant Action, What's Blocking (60% width) */}
               <div className="col-span-12 lg:col-span-7 space-y-4">
+                {/* DRAFT MODE EDITOR (Rendered in DRAFT status) */}
+                {appData?.status === "DRAFT" && (
+                  <div className="bg-white border-2 border-blue-600 rounded-lg p-5 shadow-xs space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-gray-100">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
+                            Draft Application Particulars
+                          </span>
+                          <span className="font-mono text-xs font-bold bg-blue-100 text-blue-900 px-2 py-0.5 rounded">
+                            Version v{appData.version || 1}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          Update draft parameters prior to official submission. Each save creates an immutable version snapshot.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleOpenVersionHistory}
+                          className="text-xs h-8 border-gray-300 text-gray-700"
+                        >
+                          <History className="h-3.5 w-3.5 mr-1" />
+                          History
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveDraft}
+                          disabled={savingDraft || actionLoading}
+                          className="bg-blue-700 hover:bg-blue-800 text-white font-semibold text-xs h-8 px-3"
+                        >
+                          {savingDraft ? "Saving..." : "Save Draft"}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div>
+                        <Label className="text-xs font-semibold text-gray-700">Application Title</Label>
+                        <Input
+                          value={draftTitle}
+                          onChange={(e) => setDraftTitle(e.target.value)}
+                          placeholder="e.g. Siting Approval for Precision Auto Components"
+                          className="mt-1 text-xs h-8 border-gray-300"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-700">Proposed Investment (₹ Cr)</Label>
+                          <Input
+                            type="number"
+                            value={draftFormData.investment_cr ?? ""}
+                            onChange={(e) =>
+                              setDraftFormData((prev) => ({
+                                ...prev,
+                                investment_cr: e.target.value ? Number(e.target.value) : undefined,
+                              }))
+                            }
+                            placeholder="e.g. 25.5"
+                            className="mt-1 text-xs h-8 border-gray-300"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-700">Connected Power Load (kVA)</Label>
+                          <Input
+                            type="number"
+                            value={draftFormData.power_demand_kva ?? ""}
+                            onChange={(e) =>
+                              setDraftFormData((prev) => ({
+                                ...prev,
+                                power_demand_kva: e.target.value ? Number(e.target.value) : undefined,
+                              }))
+                            }
+                            placeholder="e.g. 500"
+                            className="mt-1 text-xs h-8 border-gray-300"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-700">Water Consumption (CMD)</Label>
+                          <Input
+                            type="number"
+                            value={draftFormData.water_demand_cmd ?? ""}
+                            onChange={(e) =>
+                              setDraftFormData((prev) => ({
+                                ...prev,
+                                water_demand_cmd: e.target.value ? Number(e.target.value) : undefined,
+                              }))
+                            }
+                            placeholder="e.g. 20"
+                            className="mt-1 text-xs h-8 border-gray-300"
+                          />
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-700">Built-up Industrial Footprint (sq. m)</Label>
+                          <Input
+                            type="number"
+                            value={draftFormData.built_up_area_sqm ?? ""}
+                            onChange={(e) =>
+                              setDraftFormData((prev) => ({
+                                ...prev,
+                                built_up_area_sqm: e.target.value ? Number(e.target.value) : undefined,
+                              }))
+                            }
+                            placeholder="e.g. 3500"
+                            className="mt-1 text-xs h-8 border-gray-300"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <Label className="text-xs font-semibold text-gray-700">Statutory Notes & Justification</Label>
+                        <textarea
+                          rows={2}
+                          value={draftFormData.applicant_notes || ""}
+                          onChange={(e) =>
+                            setDraftFormData((prev) => ({ ...prev, applicant_notes: e.target.value }))
+                          }
+                          placeholder="Record notes on industrial zone allocation, master plan compliance..."
+                          className="mt-1 w-full p-2 text-xs rounded border border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* CARD 1: Current Step Overview */}
                 <div className="bg-white border border-gray-200 rounded-lg p-5 shadow-xs">
                   <div className="flex items-center justify-between mb-2">
@@ -1129,74 +1470,301 @@ export default function WorkflowDashboardPage() {
       )}
 
       {/* ========================================================================= */}
-      {/* TAB 4: QUERIES                                                            */}
+      {/* TAB 4: QUERIES (DEPARTMENT QUERY & CLARIFICATION CENTRE)                  */}
       {/* ========================================================================= */}
       {activeTab === "queries" && (
         <div className="space-y-5">
+          {/* Query Summary & RTSA Notice */}
           <div className="bg-white border border-gray-200 rounded-lg p-5">
-            <h3 className="font-bold text-sm text-gray-900 mb-1">
-              Officer Clarifications & Deficiency Notes ({queriesCount})
-            </h3>
-            <p className="text-xs text-gray-500 mb-4">
-              Under RTSA regulations, officer queries pause the statutory SLA counter until an adequate response is supplied.
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+              <div>
+                <h3 className="font-bold text-sm text-gray-900">
+                  Department Query & Clarification Centre
+                </h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Official inquiries raised by scrutiny officers under the Maharashtra Right to Public Services Act (RTSA).
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-xs h-8 border-gray-300 text-gray-700"
+                onClick={() => {
+                  if (applicationId) refreshState();
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                Refresh Inquiries
+              </Button>
+            </div>
 
-            {/* Query Card */}
-            <div className="p-4 rounded-lg bg-amber-50 border border-amber-300 text-xs space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-amber-950">Query #Q-2026-081</span>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-200 text-amber-900">
-                      Pending Your Response
-                    </span>
-                  </div>
-                  <div className="text-gray-600 text-[11px] mt-0.5">
-                    Raised on 15 Sep 2026 by Shri. S. K. Deshmukh (MIDC Scrutiny Desk)
-                  </div>
+            {/* Inquiries Metric Strip */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="p-3 bg-gray-50 rounded border border-gray-200">
+                <div className="text-[10px] uppercase font-bold text-gray-500">Total Queries</div>
+                <div className="text-lg font-bold text-gray-900 mt-0.5">{queriesList.length}</div>
+              </div>
+              <div className="p-3 bg-amber-50 rounded border border-amber-200">
+                <div className="text-[10px] uppercase font-bold text-amber-800">Action Required</div>
+                <div className="text-lg font-bold text-amber-900 mt-0.5">
+                  {queriesList.filter((q) => q.status === "OPEN").length}
                 </div>
-                <span className="text-[11px] font-mono text-amber-900 font-bold">
-                  Target: Land Possession Receipt
-                </span>
               </div>
-
-              <div className="p-3 bg-white rounded border border-amber-200 text-gray-800 leading-relaxed">
-                <strong>Officer Remark:</strong> &ldquo;The submitted land allotment letter does not include the physical possession handover receipt (Form No. 7). Please upload the signed handover receipt issued by the MIDC Executive Engineer to confirm unencumbered land access.&rdquo;
+              <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                <div className="text-[10px] uppercase font-bold text-blue-800">Response Submitted</div>
+                <div className="text-lg font-bold text-blue-900 mt-0.5">
+                  {queriesList.filter((q) => q.status === "RESPONDED").length}
+                </div>
               </div>
-
-              {/* Response Form */}
-              <div className="pt-2">
-                <Label className="text-xs font-semibold text-gray-700">Your Response Note:</Label>
-                <textarea
-                  className="w-full mt-1 p-2.5 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  rows={3}
-                  placeholder="Provide clarification explanation here..."
-                  value={queryResponseText}
-                  onChange={(e) => setQueryResponseText(e.target.value)}
-                />
-                <div className="mt-2.5 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="file"
-                      className="text-xs h-8 w-60 border-gray-300"
-                      onChange={(e) => setQueryResponseFile(e.target.files?.[0] || null)}
-                    />
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-8 px-4 font-semibold"
-                    onClick={() => {
-                      alert("Clarification response dispatched to scrutiny officer. SLA timer unpaused.");
-                      setQueryResponseText("");
-                      setQueryResponseFile(null);
-                    }}
-                  >
-                    Submit Response →
-                  </Button>
+              <div className="p-3 bg-emerald-50 rounded border border-emerald-200">
+                <div className="text-[10px] uppercase font-bold text-emerald-800">Resolved / Closed</div>
+                <div className="text-lg font-bold text-emerald-900 mt-0.5">
+                  {queriesList.filter((q) => q.status === "RESOLVED" || q.status === "CLOSED").length}
                 </div>
               </div>
             </div>
           </div>
+
+          {/* Action Success Alert */}
+          {queryActionSuccess && (
+            <div className="p-3 rounded-md bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>{queryActionSuccess}</span>
+              </div>
+              <button onClick={() => setQueryActionSuccess(null)} className="text-emerald-600 hover:text-emerald-800">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Query Cards List */}
+          {queriesList.length === 0 ? (
+            <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
+              <FileCheck2 className="h-10 w-10 text-emerald-600 mx-auto mb-3" />
+              <h4 className="text-base font-bold text-gray-800">No Departmental Queries Raised</h4>
+              <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
+                Your application dossier currently has zero deficiency notices or clarification inquiries pending from MIDC or other statutory scrutiny desks.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {queriesList.map((q) => {
+                const isOpen = q.status === "OPEN";
+                const isResponded = q.status === "RESPONDED";
+                const isResolved = q.status === "RESOLVED";
+
+                return (
+                  <div
+                    key={q.id}
+                    className={`rounded-lg border p-5 text-xs shadow-xs space-y-4 ${
+                      isOpen
+                        ? "bg-amber-50/40 border-amber-300"
+                        : isResolved
+                        ? "bg-emerald-50/30 border-emerald-200"
+                        : "bg-white border-gray-200"
+                    }`}
+                  >
+                    {/* Query Header */}
+                    <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 pb-3 border-b border-gray-200/80">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-300">
+                            {q.query_code}
+                          </span>
+                          <span className="font-semibold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">
+                            {q.department}
+                          </span>
+                          <QueryStatusBadge status={q.status} />
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                            Priority: NORMAL
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-gray-500 mt-1">
+                          Issued on {new Date(q.created_at).toLocaleString()} •{" "}
+                          {q.issued_by_name || "Scrutiny Desk Officer"}
+                        </div>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="font-mono font-semibold text-gray-700">
+                          {q.deadline_at
+                            ? `Deadline: ${new Date(q.deadline_at).toLocaleDateString()}`
+                            : "Standard: 7 Working Days (RTSA)"}
+                        </div>
+                        {isOpen && (
+                          <div className="text-[10px] text-amber-700 font-semibold mt-0.5">
+                            SLA counter paused awaiting reply
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Subject & Officer Remark */}
+                    <div>
+                      <div className="font-bold text-sm text-gray-900">{q.subject}</div>
+                      <div className="mt-2 p-3 bg-white rounded border border-gray-200 text-gray-800 leading-relaxed">
+                        <strong className="text-gray-900">Officer Inquiry: </strong>
+                        {q.query_details}
+                      </div>
+                    </div>
+
+                    {/* Messages Thread */}
+                    {q.messages && q.messages.length > 0 && (
+                      <div className="space-y-3 pt-2">
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                          Clarification Thread ({q.messages.length})
+                        </div>
+                        <div className="space-y-2.5">
+                          {q.messages.map((msg) => {
+                            const isOfficer = msg.sender_role === "officer" || msg.sender_role === "admin";
+
+                            return (
+                              <div
+                                key={msg.id}
+                                className={`p-3 rounded-lg border text-xs ${
+                                  isOfficer
+                                    ? "bg-slate-50 border-slate-200"
+                                    : "bg-blue-50/60 border-blue-200 ml-4"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2 mb-1">
+                                  <div className="flex items-center gap-1.5 font-semibold text-gray-900">
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded text-[10px] font-bold uppercase ${
+                                        isOfficer
+                                          ? "bg-slate-200 text-slate-800"
+                                          : "bg-blue-200 text-blue-900"
+                                      }`}
+                                    >
+                                      {isOfficer ? "Officer" : "Applicant"}
+                                    </span>
+                                    <span>{msg.sender_name || (isOfficer ? "Scrutiny Desk" : "You")}</span>
+                                  </div>
+                                  <span className="font-mono text-[10px] text-gray-500">
+                                    {new Date(msg.created_at).toLocaleString()}
+                                  </span>
+                                </div>
+                                <p className="text-gray-800 leading-relaxed">{msg.message_text}</p>
+
+                                {/* Message Attachments */}
+                                {msg.attachments && msg.attachments.length > 0 && (
+                                  <div className="mt-2 pt-2 border-t border-gray-200/60 flex flex-wrap items-center gap-2">
+                                    <span className="text-[10px] font-semibold text-gray-500">
+                                      Attached Documents:
+                                    </span>
+                                    {msg.attachments.map((att) => (
+                                      <button
+                                        key={att.id}
+                                        onClick={() => handleDownloadDoc(att.id, att.document_name)}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-gray-300 text-blue-700 hover:text-blue-900 font-mono text-[11px] hover:bg-gray-50"
+                                      >
+                                        <Download className="h-3 w-3" />
+                                        {att.document_name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Resolution Notice */}
+                    {isResolved && (
+                      <div className="p-3 bg-emerald-50 rounded border border-emerald-300 text-emerald-900 flex items-start gap-2.5">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-700 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-bold">Query Resolved & Accepted</div>
+                          <div className="text-[11px] text-emerald-800 mt-0.5">
+                            Resolved by {q.resolved_by_name || "Officer"} on{" "}
+                            {q.resolved_at ? new Date(q.resolved_at).toLocaleString() : "Date recorded"}.
+                          </div>
+                          {q.resolution_note && (
+                            <p className="mt-1 text-xs italic">&ldquo;{q.resolution_note}&rdquo;</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Clarification Response Composer (Rendered for OPEN or RESPONDED) */}
+                    {(isOpen || isResponded) && (
+                      <div className="pt-3 border-t border-gray-200 space-y-3">
+                        <Label className="text-xs font-semibold text-gray-700">
+                          Submit Clarification / Compliance Note:
+                        </Label>
+                        <textarea
+                          className="w-full p-2.5 text-xs rounded border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                          rows={3}
+                          placeholder="Provide clarification explanation note to the scrutiny officer..."
+                          value={queryReplyTexts[q.id] || ""}
+                          onChange={(e) =>
+                            setQueryReplyTexts((prev) => ({ ...prev, [q.id]: e.target.value }))
+                          }
+                        />
+
+                        {/* Attachments from Dossier */}
+                        {docsData?.documents && docsData.documents.filter((d) => d.is_uploaded && d.current_document).length > 0 && (
+                          <div>
+                            <Label className="text-[11px] font-semibold text-gray-600 block mb-1">
+                              Attach Dossier Documents:
+                            </Label>
+                            <div className="flex flex-wrap gap-2">
+                              {docsData.documents
+                                .filter((d) => d.is_uploaded && d.current_document)
+                                .map((d) => {
+                                  const docId = d.current_document!.id;
+                                  const isSelected = (queryReplyDocIds[q.id] || []).includes(docId);
+                                  return (
+                                    <button
+                                      key={docId}
+                                      type="button"
+                                      onClick={() => {
+                                        setQueryReplyDocIds((prev) => {
+                                          const cur = prev[q.id] || [];
+                                          return {
+                                            ...prev,
+                                            [q.id]: isSelected
+                                              ? cur.filter((x) => x !== docId)
+                                              : [...cur, docId],
+                                          };
+                                        });
+                                      }}
+                                      className={`text-[11px] px-2.5 py-1 rounded border flex items-center gap-1.5 transition-colors ${
+                                        isSelected
+                                          ? "bg-blue-100 text-blue-900 border-blue-400 font-semibold"
+                                          : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                                      }`}
+                                    >
+                                      <FileText className="h-3 w-3 shrink-0" />
+                                      <span>{d.document_name}</span>
+                                      {isSelected && <span className="text-blue-700 font-bold ml-1">✓</span>}
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end pt-1">
+                          <Button
+                            size="sm"
+                            className="bg-blue-700 hover:bg-blue-800 text-white text-xs h-8 px-4 font-semibold"
+                            disabled={submittingReply === q.id}
+                            onClick={() => handleSendQueryReply(q.id)}
+                          >
+                            {submittingReply === q.id ? "Submitting..." : "Submit Response to Officer →"}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -1337,6 +1905,316 @@ export default function WorkflowDashboardPage() {
                 </Button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* VERSION HISTORY & AUDIT SNAPSHOTS MODAL                                   */}
+      {/* ========================================================================= */}
+      {showVersionHistoryModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg border border-gray-200 max-w-2xl w-full p-6 shadow-xl animate-in fade-in zoom-in-95 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-gray-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5 text-blue-700" />
+                <div>
+                  <h3 className="font-bold text-sm text-gray-900">Application Version History</h3>
+                  <p className="text-xs text-gray-500">Immutable snapshot records for statutory audit and recovery</p>
+                </div>
+              </div>
+              <button onClick={() => setShowVersionHistoryModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="py-4 space-y-3 overflow-y-auto flex-1">
+              {versionsList.length === 0 ? (
+                <div className="py-8 text-center text-xs text-gray-500">Loading version snapshots...</div>
+              ) : (
+                versionsList
+                  .slice()
+                  .sort((a, b) => b.version_number - a.version_number)
+                  .map((ver) => {
+                    const isCurrent = ver.version_number === appData?.version;
+                    const isViewingSnapshot = selectedVersionSnapshot?.id === ver.id;
+
+                    return (
+                      <div
+                        key={ver.id}
+                        className={`p-3.5 rounded-lg border text-xs transition-colors ${
+                          isCurrent
+                            ? "bg-blue-50/50 border-blue-300"
+                            : "bg-white border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold font-mono px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-xs">
+                                v{ver.version_number}
+                              </span>
+                              <span className="font-semibold text-gray-900">{ver.title}</span>
+                              {isCurrent && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                  Current
+                                </span>
+                              )}
+                              <span className="text-[10px] text-gray-500 uppercase font-mono">
+                                {ver.status}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-gray-500 mt-1">
+                              Recorded on {new Date(ver.created_at).toLocaleString()} •{" "}
+                              {ver.created_by_email || `User #${ver.created_by_id || "System"}`}
+                            </div>
+                            {ver.change_summary && (
+                              <div className="text-gray-700 mt-1 italic text-[11px]">
+                                &ldquo;{ver.change_summary}&rdquo;
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-xs h-7 px-2 text-gray-600 hover:text-gray-900"
+                              onClick={() =>
+                                setSelectedVersionSnapshot(isViewingSnapshot ? null : ver)
+                              }
+                            >
+                              {isViewingSnapshot ? "Hide Snapshot" : "Inspect"}
+                            </Button>
+                            {appData?.status === "DRAFT" && !isCurrent && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-xs h-7 px-2.5 border-blue-300 text-blue-700 hover:bg-blue-50 font-semibold"
+                                disabled={restoringVersion}
+                                onClick={() => handleRestoreVersion(ver.version_number)}
+                              >
+                                Restore
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {isViewingSnapshot && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+                              Snapshot State Particulars
+                            </div>
+                            <pre className="p-2.5 bg-gray-50 rounded border border-gray-200 text-[10px] font-mono text-gray-800 overflow-x-auto max-h-40">
+                              {JSON.stringify(ver.snapshot, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-gray-100 flex justify-end shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                className="text-xs"
+                onClick={() => setShowVersionHistoryModal(false)}
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* PRE-SUBMISSION READINESS CHECK ASSESSMENT MODAL                           */}
+      {/* ========================================================================= */}
+      {showReadinessModal && readinessData && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl border border-gray-200 max-w-2xl w-full p-6 shadow-2xl animate-in fade-in zoom-in-95 max-h-[90vh] flex flex-col text-xs">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-gray-200 shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className={`p-2 rounded-lg ${
+                  readinessData.overall_status === "READY"
+                    ? "bg-emerald-100 text-emerald-800"
+                    : readinessData.overall_status === "NEEDS_ATTENTION"
+                    ? "bg-amber-100 text-amber-800"
+                    : "bg-rose-100 text-rose-800"
+                }`}>
+                  <ShieldCheck className="h-5 w-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-gray-900">Pre-Submission Readiness Check</h3>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      readinessData.overall_status === "READY"
+                        ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                        : readinessData.overall_status === "NEEDS_ATTENTION"
+                        ? "bg-amber-100 text-amber-800 border border-amber-300"
+                        : "bg-rose-100 text-rose-800 border border-rose-300"
+                    }`}>
+                      {readinessData.overall_status}
+                    </span>
+                  </div>
+                  <p className="text-gray-500 text-[11px] mt-0.5">
+                    Evaluates profile completeness, required documents, open queries, and inspections before scrutiny submission.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReadinessModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Score & Metrics Bar */}
+            <div className="py-3 px-4 bg-slate-50 border-b border-gray-100 space-y-2 shrink-0">
+              <div className="flex items-center justify-between font-semibold">
+                <span className="text-gray-700">Readiness Score</span>
+                <span className="font-mono text-sm font-bold text-gray-900">
+                  {readinessData.readiness_score_pct}%
+                </span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${
+                    readinessData.readiness_score_pct >= 85
+                      ? "bg-emerald-600"
+                      : readinessData.readiness_score_pct >= 60
+                      ? "bg-amber-500"
+                      : "bg-rose-600"
+                  }`}
+                  style={{ width: `${readinessData.readiness_score_pct}%` }}
+                />
+              </div>
+              <div className="flex items-center gap-4 text-[11px] pt-1">
+                <span className="flex items-center gap-1 font-medium text-rose-700">
+                  <span className="w-2 h-2 rounded-full bg-rose-600" />
+                  {readinessData.blocker_count} Blocker{readinessData.blocker_count === 1 ? "" : "s"} (Must Resolve)
+                </span>
+                <span className="flex items-center gap-1 font-medium text-amber-700">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                  {readinessData.warning_count} Warning{readinessData.warning_count === 1 ? "" : "s"}
+                </span>
+                <span className="flex items-center gap-1 font-medium text-blue-700">
+                  <span className="w-2 h-2 rounded-full bg-blue-500" />
+                  {readinessData.info_count} Informational
+                </span>
+              </div>
+            </div>
+
+            {/* Items List */}
+            <div className="py-4 space-y-3 overflow-y-auto flex-1 pr-1">
+              {readinessData.items.map((item) => {
+                const isBlocker = item.severity === "BLOCKER";
+                const isWarning = item.severity === "WARNING";
+                const badgeColor = isBlocker
+                  ? "bg-rose-50 text-rose-800 border-rose-200"
+                  : isWarning
+                  ? "bg-amber-50 text-amber-800 border-amber-200"
+                  : "bg-blue-50 text-blue-800 border-blue-200";
+
+                return (
+                  <div
+                    key={item.id}
+                    className={`p-3.5 rounded-lg border transition-colors ${
+                      isBlocker
+                        ? "bg-rose-50/30 border-rose-200"
+                        : isWarning
+                        ? "bg-amber-50/20 border-amber-200"
+                        : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${badgeColor}`}>
+                            {item.severity}
+                          </span>
+                          <span className="font-bold text-gray-900 text-xs">{item.title}</span>
+                          <span className="text-[10px] text-gray-400 uppercase font-mono">
+                            [{item.category}]
+                          </span>
+                        </div>
+                        <p className="text-gray-600 leading-relaxed text-[11px]">
+                          {item.description}
+                        </p>
+                        <div className="p-2 rounded bg-white/80 border border-gray-200 text-gray-700 text-[11px] font-medium flex items-center gap-1.5">
+                          <span className="font-bold text-gray-900">Recommended Action:</span>
+                          <span>{item.action_needed}</span>
+                        </div>
+                      </div>
+
+                      {/* Direct jump buttons */}
+                      {item.target_tab && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-7 px-2.5 shrink-0 border-blue-300 text-blue-700 hover:bg-blue-50"
+                          onClick={() => {
+                            setShowReadinessModal(false);
+                            setActiveTab(item.target_tab as WorkflowTab);
+                          }}
+                        >
+                          Go to {item.target_tab.charAt(0).toUpperCase() + item.target_tab.slice(1)} →
+                        </Button>
+                      )}
+                      {item.target_link && !item.target_tab && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-7 px-2.5 shrink-0 border-blue-300 text-blue-700 hover:bg-blue-50"
+                          onClick={() => {
+                            setShowReadinessModal(false);
+                            router.push(item.target_link!);
+                          }}
+                        >
+                          View Profile →
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Disclaimer & Footer */}
+            <div className="pt-3 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+              <div className="text-[10px] text-gray-400 italic">
+                {readinessData.disclaimer}
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs"
+                  onClick={() => setShowReadinessModal(false)}
+                >
+                  Close
+                </Button>
+                {appData?.status === "DRAFT" && readinessData.can_submit && (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold"
+                    onClick={() => {
+                      setShowReadinessModal(false);
+                      handleSubmitApp();
+                    }}
+                  >
+                    Submit Application Now →
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
@@ -69,6 +70,92 @@ def get_business_schemes(
         business_id=business.id,
         business_name=business.name,
         profile_data=profile_data,
+    )
+
+
+class SchemeQuestionnaireRequest(BaseModel):
+    answers: Dict[str, Any]
+
+
+@router.post(
+    "/api/business/{business_id}/schemes/interactive-assessment",
+    response_model=SchemesAssessmentResult,
+    summary="Interactive questionnaire assessment for government schemes",
+)
+def interactive_scheme_assessment(
+    business_id: int,
+    req: SchemeQuestionnaireRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    business = db.query(Business).filter(Business.id == business_id).first()
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Business #{business_id} not found",
+        )
+
+    if current_user.role == UserRole.APPLICANT and business.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: you do not own this business",
+        )
+
+    profile = business.regulatory_profile
+    base_data = dict(profile.confirmed_data) if (profile and profile.is_confirmed and profile.confirmed_data) else (dict(profile.extracted_data) if (profile and profile.extracted_data) else {})
+    merged = {**base_data, **req.answers}
+
+    return SchemesEngine.evaluate_schemes(
+        business_id=business.id,
+        business_name=business.name,
+        profile_data=merged,
+    )
+
+
+@router.get(
+    "/api/projects/{project_id}/schemes",
+    response_model=SchemesAssessmentResult,
+    summary="Evaluate government schemes for a project",
+)
+def get_project_schemes(
+    project_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from app.models.project import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project #{project_id} not found",
+        )
+    business = project.business
+    if not business:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project has no associated business",
+        )
+    if current_user.role == UserRole.APPLICANT and business.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access forbidden: you do not own this project",
+        )
+
+    profile = business.regulatory_profile
+    base_data = dict(profile.confirmed_data) if (profile and profile.is_confirmed and profile.confirmed_data) else (dict(profile.extracted_data) if (profile and profile.extracted_data) else {})
+    if project.power_load_kw:
+        base_data["power_connected_kw"] = project.power_load_kw
+    if project.built_up_area_sqm:
+        base_data["built_up_area_sqm"] = project.built_up_area_sqm
+    if project.workforce_count:
+        base_data["workers_count"] = project.workforce_count
+    if project.hazardous_waste:
+        base_data["hazardous_waste_generated"] = project.hazardous_waste
+
+    return SchemesEngine.evaluate_schemes(
+        business_id=business.id,
+        business_name=f"{business.name} ({project.name})",
+        profile_data=base_data,
     )
 
 

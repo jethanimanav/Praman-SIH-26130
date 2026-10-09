@@ -68,7 +68,97 @@ export interface BusinessItem {
   user_id: number;
   name: string;
   description?: string;
+  registration_number?: string;
+  entity_type?: string;
+  pan_number?: string;
+  gstin?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  registered_office_address?: string;
   created_at: string;
+  updated_at?: string;
+}
+
+export interface ProjectItem {
+  id: number;
+  business_id: number;
+  business_name?: string;
+  name: string;
+  description?: string;
+  project_type: string;
+  status: string;
+  district?: string;
+  taluka?: string;
+  industrial_zone?: string;
+  location_type?: string;
+  site_address?: string;
+  survey_plot_number?: string;
+  total_area_sqm?: number;
+  built_up_area_sqm?: number;
+  sector?: string;
+  activities: string[];
+  workforce_count?: number;
+  power_load_kw?: number;
+  water_consumption_kld?: number;
+  effluent_discharge_kld?: number;
+  pollution_category?: string;
+  hazardous_waste: boolean;
+  air_emissions: boolean;
+  created_at: string;
+  updated_at?: string;
+  applications_count: number;
+  has_regulatory_profile: boolean;
+}
+
+export interface CompanyMasterInfo {
+  id: number;
+  name: string;
+  registration_number?: string;
+  entity_type?: string;
+  pan_number?: string;
+  gstin?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  registered_office_address?: string;
+}
+
+export interface ProjectOverviewData {
+  project: ProjectItem;
+  company: CompanyMasterInfo;
+  applications: Array<{
+    id: number;
+    title: string;
+    status: string;
+    total_timeline_days: number;
+    critical_path_steps: string[];
+    total_steps: number;
+    approved_steps: number;
+    in_progress_steps: number;
+    created_at: string;
+  }>;
+  documents_summary: {
+    total_slots: number;
+    uploaded_count: number;
+    accepted_count: number;
+    under_review_count: number;
+    query_raised_count: number;
+    readiness_percentage: number;
+  };
+  inspections_summary: {
+    total: number;
+    scheduled: number;
+    completed: number;
+    rescheduled: number;
+  };
+  compliance_summary: {
+    total: number;
+    upcoming: number;
+    due_soon: number;
+    overdue: number;
+    submitted: number;
+    verified: number;
+  };
+  data_status: string;
 }
 
 export async function getBusinesses(): Promise<BusinessItem[]> {
@@ -76,8 +166,55 @@ export async function getBusinesses(): Promise<BusinessItem[]> {
   return response.data;
 }
 
-export async function createBusiness(name: string, description?: string): Promise<BusinessItem> {
-  const response = await api.post<BusinessItem>("/api/business", { name, description });
+export async function createBusiness(
+  name: string,
+  description?: string,
+  companyDetails?: Partial<CompanyMasterInfo>
+): Promise<BusinessItem> {
+  const response = await api.post<BusinessItem>("/api/business", {
+    name,
+    description,
+    ...companyDetails,
+  });
+  return response.data;
+}
+
+export async function updateBusiness(
+  businessId: number,
+  data: Partial<BusinessItem>
+): Promise<BusinessItem> {
+  const response = await api.put<BusinessItem>(`/api/business/${businessId}`, data);
+  return response.data;
+}
+
+export async function getProjects(businessId?: number): Promise<ProjectItem[]> {
+  const url = businessId ? `/api/projects?business_id=${businessId}` : "/api/projects";
+  const response = await api.get<ProjectItem[]>(url);
+  return response.data;
+}
+
+export async function getProject(projectId: number): Promise<ProjectItem> {
+  const response = await api.get<ProjectItem>(`/api/projects/${projectId}`);
+  return response.data;
+}
+
+export async function createProject(
+  data: Partial<ProjectItem> & { business_id: number; name: string }
+): Promise<ProjectItem> {
+  const response = await api.post<ProjectItem>("/api/projects", data);
+  return response.data;
+}
+
+export async function updateProject(
+  projectId: number,
+  data: Partial<ProjectItem>
+): Promise<ProjectItem> {
+  const response = await api.put<ProjectItem>(`/api/projects/${projectId}`, data);
+  return response.data;
+}
+
+export async function getProjectOverview(projectId: number): Promise<ProjectOverviewData> {
+  const response = await api.get<ProjectOverviewData>(`/api/projects/${projectId}/overview`);
   return response.data;
 }
 
@@ -150,8 +287,11 @@ export interface ApplicationDetailUI {
   id: number;
   business_id: number;
   applicant_id: number;
+  project_id?: number | null;
   title: string;
   status: "DRAFT" | "SUBMITTED" | "IN_REVIEW" | "APPROVED" | "REJECTED";
+  version?: number;
+  form_data?: Record<string, any>;
   total_timeline_days: number;
   critical_path_steps: string[];
   submitted_at?: string;
@@ -210,9 +350,15 @@ export async function getApplication(applicationId: number): Promise<Application
   return response.data;
 }
 
-export async function getApplications(businessId?: number): Promise<ApplicationDetailUI[]> {
-  const url = businessId ? `/api/workflow/applications?business_id=${businessId}` : "/api/workflow/applications";
-  const response = await api.get<ApplicationDetailUI[]>(url);
+export async function getApplications(
+  businessId?: number,
+  projectId?: number
+): Promise<ApplicationDetailUI[]> {
+  const params = new URLSearchParams();
+  if (businessId) params.append("business_id", String(businessId));
+  if (projectId) params.append("project_id", String(projectId));
+  const query = params.toString() ? `?${params.toString()}` : "";
+  const response = await api.get<ApplicationDetailUI[]>(`/api/workflow/applications${query}`);
   return response.data;
 }
 
@@ -761,23 +907,8 @@ export interface SchemeEvaluationItemUI {
   data_status: string;
 }
 
-export interface SchemesAssessmentResultUI {
-  business_id: number;
-  business_name: string;
-  total_schemes_evaluated: number;
-  eligible_count: number;
-  potentially_eligible_count: number;
-  not_eligible_count: number;
-  total_potential_benefit_inr: number;
-  schemes: SchemeEvaluationItemUI[];
-  assessed_at: string;
-  data_status: string;
-}
+export type SchemesAssessmentResultUI = SchemesAssessmentUI;
 
-export async function getBusinessSchemes(businessId: number): Promise<SchemesAssessmentResultUI> {
-  const response = await api.get<SchemesAssessmentResultUI>(`/api/business/${businessId}/schemes`);
-  return response.data;
-}
 
 // ========================================================
 // M9 Post-Approval Periodic Compliance Calendar Interfaces
@@ -1012,9 +1143,462 @@ export async function getAnalyticsTrends(): Promise<AnalyticsTrendsResponseUI> {
   return response.data;
 }
 
+// =============================================================================
+// PHASE 2: SAVE DRAFT, VERSION HISTORY & DEPARTMENT QUERY CENTRE
+// =============================================================================
 
+export interface ApplicationVersionItemUI {
+  id: number;
+  application_id: number;
+  version_number: number;
+  status: string;
+  title: string;
+  form_data?: Record<string, any> | null;
+  snapshot: Record<string, any>;
+  change_summary?: string | null;
+  source: string;
+  created_by_id?: number | null;
+  created_by_email?: string | null;
+  created_at: string;
+}
 
+export interface UpdateDraftRequestUI {
+  title?: string;
+  form_data?: Record<string, any>;
+  expected_version?: number;
+  change_summary?: string;
+}
 
+export interface RestoreVersionRequestUI {
+  change_summary?: string;
+}
 
+export async function updateDraftApplication(
+  applicationId: number,
+  payload: UpdateDraftRequestUI
+): Promise<ApplicationDetailUI> {
+  const response = await api.put<ApplicationDetailUI>(
+    `/api/workflow/applications/${applicationId}/draft`,
+    payload
+  );
+  return response.data;
+}
 
+export async function getApplicationVersions(
+  applicationId: number
+): Promise<ApplicationVersionItemUI[]> {
+  const response = await api.get<ApplicationVersionItemUI[]>(
+    `/api/workflow/applications/${applicationId}/versions`
+  );
+  return response.data;
+}
+
+export async function getApplicationVersion(
+  applicationId: number,
+  versionNumber: number
+): Promise<ApplicationVersionItemUI> {
+  const response = await api.get<ApplicationVersionItemUI>(
+    `/api/workflow/applications/${applicationId}/versions/${versionNumber}`
+  );
+  return response.data;
+}
+
+export async function restoreApplicationVersion(
+  applicationId: number,
+  versionNumber: number,
+  payload?: RestoreVersionRequestUI
+): Promise<ApplicationDetailUI> {
+  const response = await api.post<ApplicationDetailUI>(
+    `/api/workflow/applications/${applicationId}/versions/${versionNumber}/restore`,
+    payload || {}
+  );
+  return response.data;
+}
+
+export interface QueryAttachmentItemUI {
+  id: number;
+  document_name: string;
+  requirement_id: string;
+  status: string;
+}
+
+export interface QueryMessageItemUI {
+  id: number;
+  query_id: number;
+  sender_id: number;
+  sender_name?: string | null;
+  sender_role: string;
+  message_text: string;
+  attachment_document_ids: number[];
+  attachments?: QueryAttachmentItemUI[];
+  created_at: string;
+}
+
+export interface DepartmentQueryItemUI {
+  id: number;
+  application_id: number;
+  application_title?: string | null;
+  business_id: number;
+  project_id?: number | null;
+  approval_step_id?: number | null;
+  query_code: string;
+  subject: string;
+  query_details: string;
+  department: string;
+  issued_by_id: number;
+  issued_by_name?: string | null;
+  status: "OPEN" | "RESPONDED" | "RESOLVED" | "CLOSED";
+  data_status: string;
+  deadline_at?: string | null;
+  resolved_at?: string | null;
+  resolved_by_id?: number | null;
+  resolved_by_name?: string | null;
+  resolution_note?: string | null;
+  created_at: string;
+  updated_at?: string | null;
+  messages: QueryMessageItemUI[];
+}
+
+export interface CreateQueryRequestUI {
+  application_id: number;
+  approval_step_id?: number;
+  subject: string;
+  query_details: string;
+  department?: string;
+  deadline_at?: string;
+  attachment_document_ids?: number[];
+}
+
+export interface SendQueryMessageRequestUI {
+  message_text: string;
+  attachment_document_ids?: number[];
+}
+
+export interface ResolveQueryRequestUI {
+  resolution_note?: string;
+}
+
+export async function getQueries(params?: {
+  application_id?: number;
+  project_id?: number;
+  status?: string;
+}): Promise<DepartmentQueryItemUI[]> {
+  const q = new URLSearchParams();
+  if (params?.application_id) q.append("application_id", String(params.application_id));
+  if (params?.project_id) q.append("project_id", String(params.project_id));
+  if (params?.status) q.append("status", params.status);
+  const queryStr = q.toString() ? `?${q.toString()}` : "";
+  const response = await api.get<DepartmentQueryItemUI[]>(`/api/queries${queryStr}`);
+  return response.data;
+}
+
+export async function getQuery(queryId: number): Promise<DepartmentQueryItemUI> {
+  const response = await api.get<DepartmentQueryItemUI>(`/api/queries/${queryId}`);
+  return response.data;
+}
+
+export async function createQuery(
+  payload: CreateQueryRequestUI
+): Promise<DepartmentQueryItemUI> {
+  const response = await api.post<DepartmentQueryItemUI>("/api/queries", payload);
+  return response.data;
+}
+
+export async function sendQueryMessage(
+  queryId: number,
+  payload: SendQueryMessageRequestUI
+): Promise<DepartmentQueryItemUI> {
+  const response = await api.post<DepartmentQueryItemUI>(
+    `/api/queries/${queryId}/messages`,
+    payload
+  );
+  return response.data;
+}
+
+export async function resolveQuery(
+  queryId: number,
+  payload?: ResolveQueryRequestUI
+): Promise<DepartmentQueryItemUI> {
+  const response = await api.post<DepartmentQueryItemUI>(
+    `/api/queries/${queryId}/resolve`,
+    payload || {}
+  );
+  return response.data;
+}
+
+export async function closeQuery(queryId: number): Promise<DepartmentQueryItemUI> {
+  const response = await api.post<DepartmentQueryItemUI>(`/api/queries/${queryId}/close`);
+  return response.data;
+}
+
+// ==========================================
+// Phase 3 — Pre-Submission Readiness Check
+// ==========================================
+
+export interface ReadinessItemUI {
+  id: string;
+  title: string;
+  severity: "BLOCKER" | "WARNING" | "INFO";
+  category: "PROFILE" | "DOCUMENT" | "APPLICATION" | "COMPLIANCE" | "QUERY";
+  description: string;
+  action_needed: string;
+  target_tab?: string;
+  target_link?: string;
+  is_blocking: boolean;
+}
+
+export interface ReadinessAssessmentUI {
+  application_id: number;
+  application_title: string;
+  business_id: number;
+  project_id?: number;
+  overall_status: "READY" | "NEEDS_ATTENTION" | "BLOCKED";
+  readiness_score_pct: number;
+  can_submit: boolean;
+  blocker_count: number;
+  warning_count: number;
+  info_count: number;
+  items: ReadinessItemUI[];
+  assessed_at: string;
+  data_status: string;
+  disclaimer: string;
+}
+
+export async function getApplicationReadiness(
+  applicationId: number
+): Promise<ReadinessAssessmentUI> {
+  const response = await api.get<ReadinessAssessmentUI>(
+    `/api/workflow/applications/${applicationId}/readiness`
+  );
+  return response.data;
+}
+
+// ==========================================
+// Phase 3 — Unified Notifications
+// ==========================================
+
+export interface NotificationItemUI {
+  id: number;
+  user_id: number;
+  title: string;
+  message: string;
+  event_type: string;
+  severity: "INFO" | "WARNING" | "URGENT" | "SUCCESS";
+  is_read: boolean;
+  entity_type?: string;
+  entity_id?: string;
+  action_url?: string;
+  data_status: string;
+  created_at: string;
+  read_at?: string;
+}
+
+export interface NotificationListUI {
+  items: NotificationItemUI[];
+  unread_count: number;
+  total_count: number;
+}
+
+export async function getNotifications(
+  unreadOnly: boolean = false
+): Promise<NotificationListUI> {
+  const response = await api.get<NotificationListUI>(
+    `/api/notifications?unread_only=${unreadOnly}`
+  );
+  return response.data;
+}
+
+export async function getUnreadNotificationCount(): Promise<{ unread_count: number }> {
+  const response = await api.get<{ unread_count: number }>("/api/notifications/unread-count");
+  return response.data;
+}
+
+export async function markNotificationRead(id: number): Promise<NotificationItemUI> {
+  const response = await api.post<NotificationItemUI>(`/api/notifications/${id}/read`);
+  return response.data;
+}
+
+export async function markAllNotificationsRead(): Promise<{ marked_read_count: number }> {
+  const response = await api.post<{ marked_read_count: number }>("/api/notifications/read-all");
+  return response.data;
+}
+
+// ==========================================
+// Phase 4 — Government Scheme Assistant
+// ==========================================
+
+export interface SchemeCriteriaBreakdownUI {
+  matched: string[];
+  failed: string[];
+  unknown: string[];
+}
+
+export interface SchemeItemUI {
+  scheme_id: string;
+  name: string;
+  department: string;
+  category: string;
+  description: string;
+  status: "ELIGIBLE" | "POTENTIALLY_ELIGIBLE" | "NOT_ELIGIBLE";
+  eligibility_bucket: "POTENTIALLY_ELIGIBLE" | "NOT_MATCHED" | "NEEDS_MORE_INFO";
+  max_benefit_description: string;
+  max_amount_inr: number;
+  disbursement_mechanism?: string;
+  application_mode: string;
+  matched_conditions: string[];
+  unmet_conditions: string[];
+  unknown_conditions: string[];
+  criteria_breakdown?: SchemeCriteriaBreakdownUI;
+  potential_action?: string;
+  missing_fields_hint: string[];
+  required_documents: string[];
+  missing_evidence: string[];
+  suggested_next_steps: string[];
+  data_status: string;
+}
+
+export interface SchemesAssessmentUI {
+  business_id: number;
+  business_name: string;
+  total_schemes_evaluated: number;
+  eligible_count: number;
+  potentially_eligible_count: number;
+  not_eligible_count: number;
+  total_potential_benefit_inr: number;
+  schemes: SchemeItemUI[];
+  assessed_at: string;
+  data_status: string;
+  disclaimer: string;
+}
+
+export async function getBusinessSchemes(
+  businessId: number
+): Promise<SchemesAssessmentUI> {
+  const response = await api.get<SchemesAssessmentUI>(
+    `/api/business/${businessId}/schemes`
+  );
+  return response.data;
+}
+
+export async function getProjectSchemes(
+  projectId: number
+): Promise<SchemesAssessmentUI> {
+  const response = await api.get<SchemesAssessmentUI>(
+    `/api/projects/${projectId}/schemes`
+  );
+  return response.data;
+}
+
+export async function interactiveSchemeAssessment(
+  businessId: number,
+  answers: Record<string, any>
+): Promise<SchemesAssessmentUI> {
+  const response = await api.post<SchemesAssessmentUI>(
+    `/api/business/${businessId}/schemes/interactive-assessment`,
+    { answers }
+  );
+  return response.data;
+}
+
+// ==========================================
+// Phase 4 — Regulatory Change Impact Radar
+// ==========================================
+
+export interface RegulatorySourceUI {
+  id: number;
+  source_code: string;
+  name: string;
+  issuing_authority: string;
+  official_url?: string;
+  source_type: string;
+  verification_status: string;
+  is_active: boolean;
+  last_checked_at?: string;
+  created_at: string;
+}
+
+export interface RegulatoryChangeRecordUI {
+  id: number;
+  change_code: string;
+  source_id?: number;
+  title: string;
+  summary: string;
+  gazette_or_order_ref?: string;
+  publication_date?: string;
+  effective_date?: string;
+  verification_status: string;
+  target_sector?: string;
+  affected_topics: string[];
+  matching_conditions: Record<string, any>;
+  impact_summary: string;
+  recommended_action?: string;
+  created_at: string;
+}
+
+export interface ProjectImpactAssessmentUI {
+  id: number;
+  project_id: number;
+  change_id: number;
+  change_title: string;
+  change_code: string;
+  impact_level: "POTENTIALLY_AFFECTED" | "NEEDS_REVIEW" | "NO_MATCH";
+  explanation: string;
+  matched_attributes: Record<string, any>;
+  review_status: "PENDING_REVIEW" | "CONFIRMED" | "DISMISSED" | "INVESTIGATING";
+  review_notes?: string;
+  reviewed_at?: string;
+  recommended_action?: string;
+  issuing_authority: string;
+  verification_status: string;
+}
+
+export interface RadarImpactDashboardUI {
+  project_id: number;
+  project_name: string;
+  total_changes_evaluated: number;
+  potentially_affected_count: number;
+  needs_review_count: number;
+  no_match_count: number;
+  potentially_affected: ProjectImpactAssessmentUI[];
+  needs_review: ProjectImpactAssessmentUI[];
+  no_match: ProjectImpactAssessmentUI[];
+  assessed_at: string;
+  data_status: string;
+  disclaimer: string;
+}
+
+export interface ReviewImpactRequestUI {
+  decision: "CONFIRMED" | "DISMISSED" | "INVESTIGATING";
+  review_notes: string;
+}
+
+export async function getRegulatorySources(): Promise<RegulatorySourceUI[]> {
+  const response = await api.get<RegulatorySourceUI[]>("/api/radar/sources");
+  return response.data;
+}
+
+export async function getRegulatoryChanges(): Promise<RegulatoryChangeRecordUI[]> {
+  const response = await api.get<RegulatoryChangeRecordUI[]>("/api/radar/changes");
+  return response.data;
+}
+
+export async function getProjectRadarImpacts(
+  projectId: number
+): Promise<RadarImpactDashboardUI> {
+  const response = await api.get<RadarImpactDashboardUI>(
+    `/api/radar/projects/${projectId}/impacts`
+  );
+  return response.data;
+}
+
+export async function reviewProjectImpact(
+  impactId: number,
+  payload: ReviewImpactRequestUI
+): Promise<ProjectImpactAssessmentUI> {
+  const response = await api.post<ProjectImpactAssessmentUI>(
+    `/api/radar/impacts/${impactId}/review`,
+    payload
+  );
+  return response.data;
+}
 

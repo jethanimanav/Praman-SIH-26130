@@ -35,6 +35,7 @@ class JointInspection(Base):
     id = Column(Integer, primary_key=True, index=True)
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
     business_id = Column(Integer, ForeignKey("businesses.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     
     scheduled_date = Column(DateTime, nullable=False)
     time_slot = Column(String(100), nullable=False)  # e.g. "10:00 AM - 01:00 PM"
@@ -53,6 +54,7 @@ class JointInspection(Base):
     # Relationships
     application = relationship("Application", back_populates="inspections")
     business = relationship("Business")
+    project = relationship("Project")
     lead_inspector = relationship("User", foreign_keys=[lead_inspector_id])
     report = relationship("InspectionReport", back_populates="joint_inspection", uselist=False, cascade="all, delete-orphan")
 

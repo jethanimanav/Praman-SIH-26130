@@ -697,3 +697,57 @@ export function SchemeEligibilityBadge({
     </span>
   );
 }
+
+// Department Query Status Badges
+export type QueryStatusType = "OPEN" | "RESPONDED" | "RESOLVED" | "CLOSED";
+
+const QUERY_STATUS_CONFIG: Record<
+  QueryStatusType,
+  { label: string; style: string; icon: React.ComponentType<{ className?: string }> }
+> = {
+  OPEN: {
+    label: "Action Required",
+    style: "bg-amber-50 text-amber-900 border-amber-300 font-semibold",
+    icon: AlertTriangle,
+  },
+  RESPONDED: {
+    label: "Response Submitted",
+    style: "bg-blue-50 text-blue-900 border-blue-300",
+    icon: Clock,
+  },
+  RESOLVED: {
+    label: "Resolved",
+    style: "bg-emerald-50 text-emerald-900 border-emerald-300",
+    icon: CheckCircle2,
+  },
+  CLOSED: {
+    label: "Closed",
+    style: "bg-gray-100 text-gray-700 border-gray-300",
+    icon: XCircle,
+  },
+};
+
+export function QueryStatusBadge({
+  status,
+  className,
+}: {
+  status: QueryStatusType | string;
+  className?: string;
+}) {
+  const norm = (status || "OPEN") as QueryStatusType;
+  const config = QUERY_STATUS_CONFIG[norm] || QUERY_STATUS_CONFIG.OPEN;
+  const Icon = config.icon;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium border",
+        config.style,
+        className
+      )}
+    >
+      <Icon className="h-3 w-3 shrink-0" />
+      {config.label}
+    </span>
+  );
+}

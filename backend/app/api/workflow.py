@@ -15,6 +15,12 @@ from app.models.workflow import (
 )
 from app.api.deps import get_current_active_user, require_role
 from app.workflow.service import WorkflowService
+from app.workflow.draft_schema import (
+    UpdateDraftRequest,
+    ApplicationVersionResponse,
+    RestoreVersionRequest,
+)
+from app.workflow.draft_service import DraftService
 
 
 router = APIRouter(prefix="/api/workflow", tags=["workflow"])
@@ -24,6 +30,7 @@ router = APIRouter(prefix="/api/workflow", tags=["workflow"])
 
 class CreateApplicationRequest(BaseModel):
     business_id: int
+    project_id: Optional[int] = None
     title: Optional[str] = None
 
 
@@ -55,9 +62,12 @@ class ApprovalStepResponse(BaseModel):
 class ApplicationDetailResponse(BaseModel):
     id: int
     business_id: int
+    project_id: Optional[int] = None
     applicant_id: int
     title: str
     status: ApplicationStatus
+    version: int = 1
+    form_data: Optional[Dict[str, Any]] = None
     total_timeline_days: int
     critical_path_steps: List[str]
     submitted_at: Optional[datetime] = None
@@ -110,6 +120,7 @@ def create_application(
         business=business,
         user=current_user,
         title=payload.title,
+        project_id=payload.project_id,
     )
 
 
@@ -119,13 +130,16 @@ def list_applications(
     current_user: Annotated[User, Depends(get_current_active_user)],
     db: Annotated[Session, Depends(get_db)],
     business_id: Optional[int] = None,
+    project_id: Optional[int] = None,
 ):
-    """Lists applications for current user (or all if officer/admin), optionally filtered by business."""
+    """Lists applications for current user (or all if officer/admin), optionally filtered by business or project."""
     query = db.query(Application)
     if current_user.role == UserRole.APPLICANT:
         query = query.filter(Application.applicant_id == current_user.id)
     if business_id is not None:
         query = query.filter(Application.business_id == business_id)
+    if project_id is not None:
+        query = query.filter(Application.project_id == project_id)
     return query.order_by(Application.created_at.desc()).all()
 
 
@@ -176,6 +190,119 @@ def submit_application(
         db=db,
         application=application,
         user=current_user,
+    )
+
+
+@router.put("/applications/{application_id}/draft", response_model=ApplicationDetailResponse)
+def update_application_draft(
+    application_id: int,
+    payload: UpdateDraftRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Updates application draft with optimistic concurrency control (OCC).
+    Saves form_data and generates an immutable version snapshot.
+    """
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if current_user.role == UserRole.APPLICANT and application.applicant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized application access",
+        )
+
+    return DraftService.save_draft(
+        db=db,
+        application=application,
+        payload=payload,
+        user=current_user,
+    )
+
+
+@router.get("/applications/{application_id}/versions", response_model=List[ApplicationVersionResponse])
+def list_application_versions(
+    application_id: int,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Lists all immutable version snapshots for an application."""
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if current_user.role == UserRole.APPLICANT and application.applicant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized application access",
+        )
+
+    return DraftService.list_versions(db=db, application=application)
+
+
+@router.get("/applications/{application_id}/versions/{version_number}", response_model=ApplicationVersionResponse)
+def get_application_version(
+    application_id: int,
+    version_number: int,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Retrieves full snapshot data for a specific historical version."""
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if current_user.role == UserRole.APPLICANT and application.applicant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized application access",
+        )
+
+    return DraftService.get_version(db=db, application=application, version_number=version_number)
+
+
+@router.post("/applications/{application_id}/versions/{version_number}/restore", response_model=ApplicationDetailResponse)
+def restore_application_version(
+    application_id: int,
+    version_number: int,
+    payload: RestoreVersionRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """
+    Restores application data from a previous version snapshot.
+    Advances version monotonically without overwriting history.
+    """
+    application = db.query(Application).filter(Application.id == application_id).first()
+    if not application:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    if current_user.role == UserRole.APPLICANT and application.applicant_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Unauthorized application access",
+        )
+
+    return DraftService.restore_version(
+        db=db,
+        application=application,
+        version_number=version_number,
+        user=current_user,
+        change_summary=payload.change_summary,
     )
 
 

@@ -37,11 +37,14 @@ class Application(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, ForeignKey("businesses.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     applicant_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     status = Column(SAEnum(ApplicationStatus), default=ApplicationStatus.DRAFT, nullable=False, index=True)
     total_timeline_days = Column(Integer, default=0, nullable=False)
     critical_path_steps = Column(JSON, default=list, nullable=False)  # List of requirement_id strings
+    form_data = Column(JSON, default=dict, nullable=True)
+    version = Column(Integer, default=1, nullable=False)
     
     submitted_at = Column(DateTime, nullable=True)
     completed_at = Column(DateTime, nullable=True)
@@ -50,6 +53,7 @@ class Application(Base):
 
     # Relationships
     business = relationship("Business", back_populates="applications")
+    project = relationship("Project", back_populates="applications")
     applicant = relationship("User", back_populates="applications")
     steps = relationship(
         "ApprovalStep",
@@ -69,9 +73,45 @@ class Application(Base):
         cascade="all, delete-orphan",
         order_by="JointInspection.id",
     )
+    versions = relationship(
+        "ApplicationVersion",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="ApplicationVersion.version_number",
+    )
+    queries = relationship(
+        "DepartmentQuery",
+        back_populates="application",
+        cascade="all, delete-orphan",
+        order_by="DepartmentQuery.id",
+    )
 
     def __repr__(self):
-        return f"<Application id={self.id} title={self.title!r} status={self.status}>"
+        return f"<Application id={self.id} title={self.title!r} status={self.status} v={self.version}>"
+
+
+class ApplicationVersion(Base):
+    __tablename__ = "application_versions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False, index=True)
+    status = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False)
+    form_data = Column(JSON, nullable=True)
+    snapshot = Column(JSON, nullable=False)
+    change_summary = Column(Text, nullable=True)
+    source = Column(String(100), default="api", nullable=False)
+    created_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_by_email = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    application = relationship("Application", back_populates="versions")
+    created_by = relationship("User", foreign_keys=[created_by_id])
+
+    def __repr__(self):
+        return f"<ApplicationVersion app_id={self.application_id} v={self.version_number}>"
 
 
 class ApprovalStep(Base):

@@ -27,6 +27,7 @@ class Document(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     business_id = Column(Integer, ForeignKey("businesses.id"), nullable=False, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=True, index=True)
     approval_step_id = Column(Integer, ForeignKey("approval_steps.id"), nullable=True, index=True)
     requirement_id = Column(String(100), nullable=False, index=True)
@@ -53,6 +54,7 @@ class Document(Base):
 
     # Relationships
     business = relationship("Business", foreign_keys=[business_id])
+    project = relationship("Project", foreign_keys=[project_id])
     application = relationship("Application", foreign_keys=[application_id])
     approval_step = relationship("ApprovalStep", foreign_keys=[approval_step_id])
     uploaded_by = relationship("User", foreign_keys=[uploaded_by_id])

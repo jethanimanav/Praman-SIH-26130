@@ -7,32 +7,32 @@ Regulatory Orchestration Platform (ROP)
 SIH 2026 — PS 26130
 
 ## Current Milestone
-M10 (FINAL PLANNED MILESTONE) — COMPLETE & FULL 10-SCREEN PRODUCT TRANSFORMATION VERIFIED
+Phase 3 & Phase 4 — Pre-Submission Readiness Check, Unified Notifications, Scheme Eligibility Assistant & Regulatory Change Impact Radar (COMPLETE & VERIFIED)
 
 ## Overall Status
-COMPLETE (185/185 backend tests passing, 24/24 Next.js routes building cleanly with 0 errors)
+COMPLETE & HARDENED (220/220 backend tests passing, 24/24 Next.js routes building cleanly with 0 errors, bi-directional Alembic migrations tested on disposable database)
 
 ## Last Updated
-2026-10-07
+2026-10-09
 
 ## Last Agent
-Session 18 (PRAMAN Product Transformation Lead: Executed full product transformation matching the 10-screen reference journey in media_1791369799502.jpg and strict Maharashtra industrial single-window requirements. Refactored Application Shell with persistent sidebar and compact header; redesigned Landing page with high-clarity hero and 4-step workflow; built high-density Applicant Dashboard with active establishment summary and clearance progress radial; created 4-step Project Setup wizard with categorized industrial activities; built Approval Discovery with strict Applicability vs Progress separation; created My Applications case-management table; designed dual-mode Application Workspace supporting Screen 6 In-Progress Case View and Screen 7 Documents Vault with 4-metric strip, plus Screen 10 Approved Certificate; verified Post-Approval Inspections & Compliance matching Screen 9. 185/185 pytest tests passing, 24/24 Next.js routes compiling with exit code 0).
+Session 20 (PRAMAN Phase 3 & 4 Lead: Implemented Pre-Submission Readiness Check with blocker enforcement and drawer modal, Unified Notifications Centre with deduplication idempotency and interactive bell flyout, Government Scheme & Incentive Assistant with transparent criteria breakdown and interactive scenario modeler, and Regulatory Change Impact Radar with deterministic profile matching and officer review audit logging. Tested Alembic migration 20261009_e4f5a6b7c8d9 bi-directionally on disposable DB; verified 220/220 pytest unit tests passing with zero regressions; built and verified Next.js 14 frontend across 24/24 routes with exit code 0).
 
 ---
 
 # Current State
 
-M0 Foundation, M1 Regulatory Engine, M2 Business Profile + AI Intake, M3 Regulatory Discovery, M4 Workflow Engine + Critical Path Analysis, M5 SLA Monitoring + Deterministic Escalation Engine, M6 Officer & Admin Escalation Resolution Dashboards, M7 Document Management & Officer Scrutiny, M8 Risk Assessment & Joint Inspection Scheduling Engine, M9 Schemes, Incentives & Post-Approval Ongoing Compliance Engine, and M10 Analytics, Executive Insights & Performance Metrics are implemented and fully tested.
+M0 Foundation through M10 Analytics, plus Phase 0 Safety Baseline, Phase 1 Unified Business Profile & Project Workspace, Phase 2 Save Draft, Version History & Department Query Centre, and Phase 3 & 4 Readiness, Notifications, Schemes Assistant & Regulatory Radar are fully implemented, verified, and hardened.
 Backend environment standardized on Python 3.12.10. Full MAITRI/NSWS-inspired product transformation completed for frontend (24 routes compiling with 0 errors).
 
-Backend: FastAPI + SQLAlchemy + Alembic + SQLite + JWT Auth + RBAC + Deterministic Regulatory Rule Engine + AI Intake & Adaptive Questions + Regulatory Discovery + Approval DAG Engine + State Machine + SLA & Escalation Engines + Operational Escalation Resolution + Local Document Vault & Scrutiny Engine + Deterministic Risk Engine + Central Joint Inspection Scheduling (CIS) + Schemes & Incentives Engine + Post-Approval Periodic Compliance Calendar + Deterministic Cross-Milestone Analytics & Executive Insights Engine
+Backend: FastAPI + SQLAlchemy + Alembic + SQLite + JWT Auth + RBAC + Deterministic Regulatory Rule Engine + AI Intake & Adaptive Questions + Regulatory Discovery + Approval DAG Engine + State Machine + SLA & Escalation Engines + Operational Escalation Resolution + Local Document Vault & Scrutiny Engine + Deterministic Risk Engine + Central Joint Inspection Scheduling (CIS) + Schemes & Incentives Engine + Post-Approval Periodic Compliance Calendar + Deterministic Cross-Milestone Analytics + Project Workspace Engine + Draft & OCC Versioning Service + Department Query Centre + Pre-Submission Readiness Check Service + Unified Notifications Centre + Government Scheme Assistant + Regulatory Change Impact Radar
 Frontend: Next.js 14 + TypeScript + Tailwind + shadcn/ui
 
 ---
 
-# Milestone Status
+# Milestone & Phase Status
 
-| Milestone             | Status      | Notes                          |
+| Milestone / Phase     | Status      | Notes                          |
 |-----------------------|-------------|--------------------------------|
 | M0 Foundation         | TESTED      | 25/25 unit tests passing       |
 | M1 Regulatory Engine  | TESTED      | 25/25 unit tests passing       |
@@ -44,7 +44,12 @@ Frontend: Next.js 14 + TypeScript + Tailwind + shadcn/ui
 | M7 Documents          | TESTED      | 21/21 unit tests passing       |
 | M8 Risk + Inspection  | TESTED      | 19/19 unit tests passing       |
 | M9 Schemes + Compliance | TESTED     | 15/15 unit tests passing       |
-| M10 Analytics         | TESTED      | 13/13 unit tests passing (181 total) |
+| M10 Analytics         | TESTED      | 13/13 unit tests passing       |
+| Phase 0 Baseline      | VERIFIED    | Test isolation, security audit |
+| Phase 1 Business & Project | TESTED | 8/8 unit tests passing         |
+| Phase 2 Drafts & Queries | TESTED    | 11/11 unit tests passing       |
+| Phase 3 Readiness & Notifications | TESTED | 5/5 unit tests passing |
+| Phase 4 Schemes & Radar | TESTED     | 5/5 unit tests passing (220 total) |
 
 
 ---

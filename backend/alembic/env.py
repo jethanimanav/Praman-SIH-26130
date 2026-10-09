@@ -19,8 +19,12 @@ if config.config_file_name is not None:
 
 settings = get_settings()
 
-# Override sqlalchemy.url from settings
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# Use DATABASE_URL from env or caller config if set, otherwise fallback to settings.database_url
+existing_url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+if existing_url:
+    config.set_main_option("sqlalchemy.url", existing_url)
+else:
+    config.set_main_option("sqlalchemy.url", settings.database_url)
 
 target_metadata = Base.metadata
 

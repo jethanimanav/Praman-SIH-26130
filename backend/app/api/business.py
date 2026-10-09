@@ -36,6 +36,25 @@ def get_rules():
 class CreateBusinessRequest(BaseModel):
     name: str
     description: Optional[str] = None
+    registration_number: Optional[str] = None
+    entity_type: Optional[str] = None
+    pan_number: Optional[str] = None
+    gstin: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    registered_office_address: Optional[str] = None
+
+
+class UpdateBusinessRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    registration_number: Optional[str] = None
+    entity_type: Optional[str] = None
+    pan_number: Optional[str] = None
+    gstin: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    registered_office_address: Optional[str] = None
 
 
 class BusinessResponse(BaseModel):
@@ -43,6 +62,13 @@ class BusinessResponse(BaseModel):
     user_id: int
     name: str
     description: Optional[str] = None
+    registration_number: Optional[str] = None
+    entity_type: Optional[str] = None
+    pan_number: Optional[str] = None
+    gstin: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    registered_office_address: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime] = None
 
@@ -88,6 +114,13 @@ def create_business(
         user_id=current_user.id,
         name=payload.name,
         description=payload.description,
+        registration_number=payload.registration_number,
+        entity_type=payload.entity_type,
+        pan_number=payload.pan_number,
+        gstin=payload.gstin,
+        contact_email=payload.contact_email,
+        contact_phone=payload.contact_phone,
+        registered_office_address=payload.registered_office_address,
     )
     db.add(business)
     db.commit()
@@ -125,6 +158,37 @@ def get_business(
     business = db.query(Business).filter(Business.id == business_id, Business.user_id == current_user.id).first()
     if not business:
         raise HTTPException(status_code=404, detail="Business not found")
+    return business
+
+
+@router.put("/{business_id}", response_model=BusinessResponse)
+def update_business(
+    business_id: int,
+    payload: UpdateBusinessRequest,
+    current_user: Annotated[User, Depends(get_current_active_user)],
+    db: Annotated[Session, Depends(get_db)],
+):
+    """Update reusable company profile details."""
+    business = db.query(Business).filter(Business.id == business_id, Business.user_id == current_user.id).first()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business not found")
+
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, val in update_data.items():
+        setattr(business, field, val)
+
+    record_audit(
+        db,
+        "business.update",
+        user_id=current_user.id,
+        user_email=current_user.email,
+        user_role=current_user.role.value,
+        entity_type="business",
+        entity_id=str(business.id),
+        new_value=update_data,
+    )
+    db.commit()
+    db.refresh(business)
     return business
 
 

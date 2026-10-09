@@ -4,7 +4,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { getSession, clearSession, User } from "@/lib/auth";
-import { getBusinesses, BusinessItem } from "@/lib/api";
+import {
+  getBusinesses,
+  BusinessItem,
+  getProjects,
+  ProjectItem,
+  getNotifications,
+  getUnreadNotificationCount,
+  markNotificationRead,
+  markAllNotificationsRead,
+  NotificationItemUI,
+} from "@/lib/api";
 import {
   Building2,
   LayoutDashboard,
@@ -17,9 +27,17 @@ import {
   LogOut,
   Bell,
   ChevronRight,
+  ChevronDown,
   Menu,
   X,
   Factory,
+  Plus,
+  Check,
+  CheckCheck,
+  ExternalLink,
+  AlertTriangle,
+  Info,
+  RefreshCw,
 } from "lucide-react";
 
 interface BreadcrumbItem {
@@ -45,7 +63,16 @@ export function ApplicantLayout({
   const [user, setUser] = useState<User | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [business, setBusiness] = useState<BusinessItem | null>(null);
+  const [projects, setProjects] = useState<ProjectItem[]>([]);
+  const [activeProject, setActiveProject] = useState<ProjectItem | null>(null);
+  const [projectSwitcherOpen, setProjectSwitcherOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Unified Notifications State
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notifications, setNotifications] = useState<NotificationItemUI[]>([]);
+  const [loadingNotifications, setLoadingNotifications] = useState(false);
 
   useEffect(() => {
     const session = getSession();
@@ -53,13 +80,102 @@ export function ApplicantLayout({
       router.push("/login");
     } else {
       setUser(session);
-      getBusinesses()
-        .then((bizs) => {
-          if (bizs.length > 0) setBusiness(bizs[0]);
-        })
-        .catch(() => {});
+      loadProjectsAndBusiness();
+      loadUnreadCount();
     }
   }, [router]);
+
+  function loadUnreadCount() {
+    getUnreadNotificationCount()
+      .then((res) => setUnreadCount(res.unread_count))
+      .catch(() => {});
+  }
+
+  function handleToggleNotifications() {
+    const next = !notificationsOpen;
+    setNotificationsOpen(next);
+    if (next) {
+      setLoadingNotifications(true);
+      getNotifications(false)
+        .then((data) => {
+          setNotifications(data.items);
+          setUnreadCount(data.unread_count);
+        })
+        .catch(() => {})
+        .finally(() => setLoadingNotifications(false));
+    }
+  }
+
+  async function handleMarkAllRead() {
+    try {
+      await markAllNotificationsRead();
+      setUnreadCount(0);
+      setNotifications((prev) =>
+        prev.map((n) => ({ ...n, is_read: true, read_at: new Date().toISOString() }))
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  async function handleNotificationClick(item: NotificationItemUI) {
+    if (!item.is_read) {
+      markNotificationRead(item.id).catch(() => {});
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === item.id ? { ...n, is_read: true } : n))
+      );
+    }
+    setNotificationsOpen(false);
+    if (item.action_url) {
+      router.push(item.action_url);
+    }
+  }
+
+  function loadProjectsAndBusiness() {
+    Promise.all([
+      getBusinesses().catch(() => []),
+      getProjects().catch(() => []),
+    ]).then(([bizs, projs]) => {
+      if (bizs.length > 0) setBusiness(bizs[0]);
+      setProjects(projs);
+
+      const storedId = typeof window !== "undefined" ? localStorage.getItem("rop_active_project_id") : null;
+      const matched = storedId ? projs.find((p) => p.id === Number(storedId)) : null;
+      const selected = matched || (projs.length > 0 ? projs[0] : null);
+      setActiveProject(selected);
+      if (selected && typeof window !== "undefined") {
+        localStorage.setItem("rop_active_project_id", String(selected.id));
+      }
+    });
+  }
+
+  useEffect(() => {
+    function handleProjectChanged(e: any) {
+      if (e.detail?.project) {
+        setActiveProject(e.detail.project);
+      } else {
+        loadProjectsAndBusiness();
+      }
+    }
+    window.addEventListener("project-switched", handleProjectChanged);
+    window.addEventListener("project-updated", handleProjectChanged);
+    return () => {
+      window.removeEventListener("project-switched", handleProjectChanged);
+      window.removeEventListener("project-updated", handleProjectChanged);
+    };
+  }, []);
+
+  function handleSelectProject(proj: ProjectItem) {
+    setActiveProject(proj);
+    setProjectSwitcherOpen(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("rop_active_project_id", String(proj.id));
+      window.dispatchEvent(
+        new CustomEvent("project-switched", { detail: { project: proj, projectId: proj.id } })
+      );
+    }
+  }
 
   function handleLogout() {
     clearSession();
@@ -185,27 +301,87 @@ export function ApplicantLayout({
           })}
         </nav>
 
-        {/* Active Establishment & User Footer */}
-        <div className="p-3 border-t border-gray-200 bg-gray-50/70 space-y-2">
-          {/* Active Establishment snippet */}
-          <Link
-            href="/applicant/project"
-            className="block p-2 rounded-lg bg-white border border-gray-200 hover:border-gray-300 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded bg-blue-50 flex items-center justify-center shrink-0">
-                <Factory className="h-3 w-3 text-blue-700" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-bold text-gray-900 truncate">
-                  {business?.name || "Apex Precision Auto Components"}
+        {/* Active Establishment & Facility Selector */}
+        <div className="p-3 border-t border-gray-200 bg-gray-50/70 space-y-2 relative">
+          {/* Active Facility Card with Dropdown Switcher */}
+          <div className="relative">
+            <button
+              onClick={() => setProjectSwitcherOpen(!projectSwitcherOpen)}
+              className="w-full text-left p-2 rounded-lg bg-white border border-gray-200 hover:border-blue-400 hover:shadow-xs transition-all flex items-center justify-between group"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-6 h-6 rounded bg-blue-50 flex items-center justify-center shrink-0 border border-blue-100">
+                  <Factory className="h-3.5 w-3.5 text-blue-700" />
                 </div>
-                <div className="text-[10px] text-gray-500 truncate">
-                  Pune, Maharashtra
+                <div className="min-w-0 flex-1">
+                  <div className="text-[11px] font-bold text-gray-900 truncate group-hover:text-blue-700">
+                    {activeProject ? activeProject.name : business?.name || "Apex Precision Auto Components"}
+                  </div>
+                  <div className="text-[10px] text-gray-500 truncate flex items-center gap-1">
+                    <span>{activeProject?.district || "Pune"}, Maharashtra</span>
+                    {activeProject?.pollution_category && (
+                      <span className="text-[9px] px-1 py-0.2 bg-gray-100 rounded text-gray-600 font-medium">
+                        {activeProject.pollution_category}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          </Link>
+              <ChevronDown className="h-3.5 w-3.5 text-gray-400 shrink-0 ml-1 group-hover:text-blue-700 transition-colors" />
+            </button>
+
+            {/* Dropdown Menu for Switching Projects */}
+            {projectSwitcherOpen && (
+              <div className="absolute bottom-full left-0 mb-1 w-full bg-white rounded-lg border border-gray-200 shadow-lg z-50 py-1 overflow-hidden">
+                <div className="px-3 py-1.5 border-b border-gray-100 flex items-center justify-between text-[11px] font-bold text-gray-700 bg-gray-50/60">
+                  <span>Facilities / Projects ({projects.length})</span>
+                  <Link
+                    href="/applicant/project?action=new"
+                    onClick={() => setProjectSwitcherOpen(false)}
+                    className="text-[10px] text-blue-700 hover:underline flex items-center gap-0.5"
+                  >
+                    <Plus className="h-3 w-3" /> New
+                  </Link>
+                </div>
+                <div className="max-h-48 overflow-y-auto py-1">
+                  {projects.map((p) => {
+                    const isSelected = activeProject?.id === p.id;
+                    return (
+                      <button
+                        key={p.id}
+                        onClick={() => handleSelectProject(p)}
+                        className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-blue-50/60 transition-colors ${
+                          isSelected ? "bg-blue-50/80 font-bold text-blue-800" : "text-gray-700"
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1 mr-2">
+                          <div className="truncate text-[11px]">{p.name}</div>
+                          <div className="text-[10px] text-gray-400 truncate">
+                            {p.district || "Maharashtra"} • {p.project_type || "Setup"}
+                          </div>
+                        </div>
+                        {isSelected && <Check className="h-3.5 w-3.5 text-blue-700 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                  {projects.length === 0 && (
+                    <div className="px-3 py-2 text-[11px] text-gray-400 text-center">
+                      No facilities yet
+                    </div>
+                  )}
+                </div>
+                <div className="p-1 border-t border-gray-100 bg-gray-50/50">
+                  <Link
+                    href="/applicant/project"
+                    onClick={() => setProjectSwitcherOpen(false)}
+                    className="block text-center py-1 text-[11px] font-medium text-blue-700 hover:bg-blue-100/50 rounded"
+                  >
+                    Manage Facility Profiles &rarr;
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* User Profile Card */}
           <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-gray-200">
@@ -269,10 +445,20 @@ export function ApplicantLayout({
             </nav>
           </div>
 
-          {/* Search, Notifications & Demo Badge */}
+          {/* Search, Active Facility Pill, Notifications & Demo Badge */}
           <div className="flex items-center gap-3">
+            {/* Active Facility Pill */}
+            {activeProject && (
+              <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-700 text-[11px]">
+                <Factory className="h-3 w-3 text-slate-500" />
+                <span className="font-semibold text-slate-900 truncate max-w-[140px]">{activeProject.name}</span>
+                <span className="text-slate-400">•</span>
+                <span className="text-slate-500">{activeProject.district || "Maharashtra"}</span>
+              </div>
+            )}
+
             {/* Contextual search input */}
-            <div className="hidden md:flex items-center relative w-64 lg:w-80">
+            <div className="hidden md:flex items-center relative w-60 lg:w-72">
               <Search className="absolute left-2.5 h-3.5 w-3.5 text-gray-400" />
               <input
                 type="text"
@@ -290,14 +476,139 @@ export function ApplicantLayout({
               />
             </div>
 
-            {/* Notification bell with indicator */}
-            <button
-              title="Notifications"
-              className="relative p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
-            >
-              <Bell className="h-4 w-4" />
-              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-rose-600 ring-2 ring-white" />
-            </button>
+            {/* Interactive Notification Bell & Dropdown Centre */}
+            <div className="relative">
+              <button
+                type="button"
+                title="Notifications"
+                onClick={handleToggleNotifications}
+                className="relative p-1.5 rounded-lg text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1 right-1 min-w-[14px] h-3.5 px-1 rounded-full bg-rose-600 text-white font-mono text-[9px] font-bold flex items-center justify-center ring-2 ring-white">
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setNotificationsOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden text-xs">
+                    <div className="px-4 py-3 bg-gray-50/80 border-b border-gray-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-gray-900 text-sm">Notifications</span>
+                        {unreadCount > 0 ? (
+                          <span className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 font-bold text-[10px]">
+                            {unreadCount} unread
+                          </span>
+                        ) : (
+                          <span className="px-1.5 py-0.2 rounded-full bg-gray-100 text-gray-600 font-medium text-[10px]">
+                            All caught up
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {unreadCount > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleMarkAllRead}
+                            className="text-[11px] font-semibold text-blue-700 hover:text-blue-900 flex items-center gap-1 hover:underline p-1"
+                          >
+                            <CheckCheck className="h-3 w-3" /> Mark all read
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setNotificationsOpen(false)}
+                          className="text-gray-400 hover:text-gray-600 p-1"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="max-h-80 overflow-y-auto divide-y divide-gray-100">
+                      {loadingNotifications ? (
+                        <div className="p-6 text-center text-gray-400">
+                          <RefreshCw className="h-4 w-4 animate-spin mx-auto mb-1.5 text-blue-600" />
+                          Loading notifications...
+                        </div>
+                      ) : notifications.length === 0 ? (
+                        <div className="p-6 text-center text-gray-500 space-y-1">
+                          <Bell className="h-6 w-6 text-gray-300 mx-auto" />
+                          <div className="font-semibold text-gray-700">No notifications yet</div>
+                          <div className="text-[11px] text-gray-400">
+                            Updates regarding applications, queries, and statutory deadlines will appear here.
+                          </div>
+                        </div>
+                      ) : (
+                        notifications.map((item) => {
+                          const isUnread = !item.is_read;
+                          const severityBadge =
+                            item.severity === "URGENT"
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : item.severity === "WARNING"
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : item.severity === "SUCCESS"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-blue-50 text-blue-700 border-blue-200";
+
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => handleNotificationClick(item)}
+                              className={`p-3 transition-colors cursor-pointer hover:bg-gray-50 flex items-start gap-2.5 ${
+                                isUnread ? "bg-blue-50/20" : ""
+                              }`}
+                            >
+                              <div className="mt-0.5">
+                                {isUnread ? (
+                                  <span className="w-2 h-2 rounded-full bg-blue-600 block mt-1" />
+                                ) : (
+                                  <span className="w-2 h-2 rounded-full bg-transparent block mt-1" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0 space-y-1">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="font-bold text-gray-900 truncate">
+                                    {item.title}
+                                  </span>
+                                  <span
+                                    className={`text-[9px] px-1.5 py-0.2 rounded border font-bold uppercase shrink-0 ${severityBadge}`}
+                                  >
+                                    {item.severity}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-gray-600 line-clamp-2 leading-relaxed">
+                                  {item.message}
+                                </p>
+                                <div className="flex items-center justify-between text-[10px] text-gray-400 pt-0.5">
+                                  <span>{new Date(item.created_at).toLocaleDateString()}</span>
+                                  {item.action_url && (
+                                    <span className="text-blue-700 font-semibold flex items-center gap-0.5">
+                                      View <ExternalLink className="h-2.5 w-2.5" />
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="p-2 border-t border-gray-100 bg-gray-50/60 text-center text-[10px] text-gray-400">
+                      Workflow Event Notifications • DEMO
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
 
             {/* Environment Badge */}
             <span className="hidden sm:inline-flex items-center text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">

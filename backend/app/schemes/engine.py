@@ -151,14 +151,31 @@ class SchemesEngine:
             # Determine eligibility status
             if len(unmet) > 0:
                 status = SchemeEligibilityStatus.NOT_ELIGIBLE
+                bucket = "NOT_MATCHED"
                 not_eligible_count += 1
+                suggested_steps = ["Unit operational parameters do not currently satisfy mandatory criteria."]
             elif len(missing) > 0:
                 status = SchemeEligibilityStatus.POTENTIALLY_ELIGIBLE
+                bucket = "NEEDS_MORE_INFO"
                 potentially_eligible_count += 1
+                suggested_steps = [f"Provide information for '{m}' in questionnaire" for m in missing]
+                if potential_act:
+                    suggested_steps.append(potential_act)
             else:
                 status = SchemeEligibilityStatus.ELIGIBLE
+                bucket = "POTENTIALLY_ELIGIBLE"
                 eligible_count += 1
                 total_benefit_inr += max_amt
+                suggested_steps = [f"Upload required dossier: {d}" for d in docs[:2]] + [
+                    "Submit formal incentive application through single-window clearance"
+                ]
+
+            from app.schemes.schema import CriteriaBreakdown
+            cb = CriteriaBreakdown(
+                matched=matched,
+                failed=unmet,
+                unknown=[f"{m} (value not recorded)" for m in missing],
+            )
 
             evaluations.append(
                 SchemeEvaluationItem(
@@ -168,15 +185,20 @@ class SchemesEngine:
                     category=category,
                     description=desc,
                     status=status,
+                    eligibility_bucket=bucket,
                     max_benefit_description=max_desc,
                     max_amount_inr=max_amt,
                     disbursement_mechanism=disb_mech,
                     application_mode=app_mode,
                     matched_conditions=matched,
                     unmet_conditions=unmet,
+                    unknown_conditions=missing,
+                    criteria_breakdown=cb,
                     potential_action=potential_act,
                     missing_fields_hint=missing_hint,
                     required_documents=docs,
+                    missing_evidence=docs,
+                    suggested_next_steps=suggested_steps,
                     data_status=data_status,
                 )
             )

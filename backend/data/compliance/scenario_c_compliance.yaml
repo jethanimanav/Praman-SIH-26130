@@ -1,0 +1,158 @@
+# ==============================================================================
+# PRAMAN — Regulatory Orchestration Platform (SIH 2026 PS 26130)
+# Declarative Periodic Post-Approval Ongoing Compliance Configuration (Scenario C)
+# Data Status: DEMO
+# ==============================================================================
+
+metadata:
+  scenario: "Scenario C — Electroplating & Automotive Components Manufacturing"
+  version: "1.0.0"
+  description: "Declarative recurring statutory filings, periodic returns, and renewals post-commissioning"
+  data_status: "DEMO"
+
+compliance_requirements:
+  - compliance_id: "COMPL-PC-EFFLUENT-LOG"
+    title: "Monthly ETP Discharge & Water Quality Monitoring Log"
+    department: "State Pollution Control Board"
+    frequency: "MONTHLY"
+    recurrence_day_of_month: 10
+    lead_notice_days: 7
+    penalty_clause_desc: "Statutory show-cause notice and environmental compensation levy under Water Act Section 33A"
+    statutory_act: "Water (Prevention and Control of Pollution) Act, 1974"
+    required_form: "Form IV - Continuous Effluent Monitoring Log"
+    metric_fields:
+      - name: "treated_volume_kl"
+        label: "Treated Effluent Volume (kL)"
+        field_type: "number"
+        required: true
+      - name: "bod_mg_l"
+        label: "Biochemical Oxygen Demand - BOD (mg/L)"
+        field_type: "number"
+        required: true
+      - name: "cod_mg_l"
+        label: "Chemical Oxygen Demand - COD (mg/L)"
+        field_type: "number"
+        required: true
+      - name: "ph_level"
+        label: "Effluent pH Level"
+        field_type: "number"
+        required: true
+    data_status: "DEMO"
+
+  - compliance_id: "COMPL-GW-EXTRACTION-METER"
+    title: "Quarterly Groundwater Extraction Piezometer Readings"
+    department: "Groundwater Management Authority"
+    frequency: "QUARTERLY"
+    recurrence_interval_months: 3
+    lead_notice_days: 15
+    penalty_clause_desc: "Sealing of borewell and retrospective penal water cess under CGWA Guidelines"
+    statutory_act: "Environment (Protection) Act - Central Ground Water Authority Directives"
+    required_form: "Form GW-2 - Quarterly Piezometric Extraction Log"
+    metric_fields:
+      - name: "cumulative_reading_m3"
+        label: "Cumulative Digital Flowmeter Reading (m³)"
+        field_type: "number"
+        required: true
+      - name: "daily_average_m3"
+        label: "Average Daily Extraction Rate (m³/day)"
+        field_type: "number"
+        required: true
+      - name: "rainwater_recharge_status"
+        label: "Rainwater Harvesting System Operational Status"
+        field_type: "text"
+        required: true
+    data_status: "DEMO"
+
+  - compliance_id: "COMPL-PC-ENV-RETURN"
+    title: "Half-Yearly Environmental Compliance Return"
+    department: "State Pollution Control Board"
+    frequency: "HALF_YEARLY"
+    recurrence_interval_months: 6
+    lead_notice_days: 30
+    penalty_clause_desc: "Immediate suspension of Consent to Operate (CTO) and hazardous waste handling authorization"
+    statutory_act: "Environment (Protection) Rules, 1986 & Hazardous Wastes Rules, 2016"
+    required_form: "Form V - Environmental Statement & Waste Manifest"
+    metric_fields:
+      - name: "hazardous_waste_quantity_mt"
+        label: "Hazardous Waste Dispatched to TSDF (Metric Tonnes)"
+        field_type: "number"
+        required: true
+      - name: "ambient_air_pm25_ug_m3"
+        label: "Ambient Air Quality PM2.5 (µg/m³)"
+        field_type: "number"
+        required: true
+      - name: "manifest_copy_attached"
+        label: "Manifest Form 10 Copy Attached"
+        field_type: "boolean"
+        required: true
+    data_status: "DEMO"
+
+  - compliance_id: "COMPL-DISH-ANNUAL-RETURN"
+    title: "Annual Factory Safety & Health Return"
+    department: "Directorate of Industrial Safety & Health (DISH)"
+    frequency: "ANNUAL"
+    recurrence_interval_months: 12
+    recurrence_month: 1
+    recurrence_day: 31
+    lead_notice_days: 45
+    penalty_clause_desc: "Statutory prosecution of Factory Occupier under Section 92 of The Factories Act, 1948"
+    statutory_act: "The Factories Act, 1948 & State Factories Rules"
+    required_form: "Form 25 - Combined Annual Return"
+    metric_fields:
+      - name: "mandays_worked"
+        label: "Total Man-days Worked During Year"
+        field_type: "number"
+        required: true
+      - name: "accident_count"
+        label: "Number of Reportable Industrial Accidents"
+        field_type: "number"
+        required: true
+      - name: "medical_checkups_completed"
+        label: "Workers Subject to Statutory Medical Examination"
+        field_type: "number"
+        required: true
+    data_status: "DEMO"
+
+  - compliance_id: "COMPL-FIRE-NOC-RENEWAL"
+    title: "Annual Fire Safety Equipment Audit & Renewal"
+    department: "Fire and Emergency Services Department"
+    frequency: "ANNUAL"
+    recurrence_interval_months: 12
+    lead_notice_days: 45
+    penalty_clause_desc: "Revocation of Fire NOC and municipal closure notice"
+    statutory_act: "Fire Force Act & National Building Code of India (Part IV)"
+    required_form: "Form B - Fire Equipment Maintenance Certificate"
+    metric_fields:
+      - name: "hydrant_pressure_bar"
+        label: "Fire Hydrant Ring Main Pressure (Bar)"
+        field_type: "number"
+        required: true
+      - name: "last_evacuation_drill_date"
+        label: "Date of Last Conducted Fire Evacuation Drill"
+        field_type: "text"
+        required: true
+      - name: "extinguishers_certified"
+        label: "All Portable Extinguishers Re-inspected & Certified"
+        field_type: "boolean"
+        required: true
+    data_status: "DEMO"
+
+  - compliance_id: "COMPL-ELEC-SAFETY-AUDIT"
+    title: "High-Tension Electrical Installation & Substation Safety Audit"
+    department: "Chief Electrical Inspectorate to Government"
+    frequency: "BIENNIAL"
+    recurrence_interval_months: 24
+    lead_notice_days: 60
+    penalty_clause_desc: "Immediate disconnection of high-tension grid supply for electrical hazard"
+    statutory_act: "Central Electricity Authority (Measures relating to Safety and Electric Supply) Regulations"
+    required_form: "Form CEI-3 - High Voltage Installation Safety Return"
+    metric_fields:
+      - name: "transformer_earth_resistance_ohms"
+        label: "Transformer Earth Electrode Resistance (Ohms)"
+        field_type: "number"
+        required: true
+      - name: "oil_breakdown_voltage_kv"
+        label: "Transformer Oil Dielectric Strength (kV)"
+        field_type: "number"
+        required: true
+    data_status: "DEMO"

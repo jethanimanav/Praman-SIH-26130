@@ -1,0 +1,115 @@
+version: "1.0"
+description: "Synthetic Risk Assessment & Joint Inspection Criteria for Scenario C (DEMO DATA ONLY)"
+data_status: "DEMO"
+
+risk_categories:
+  HIGH:
+    category_name: "HIGH"
+    color_code: "RED"
+    min_score: 70
+    description: "High hazard, highly polluting, or large-scale industrial operation."
+    joint_inspection_mandatory: true
+    inspection_frequency_months: 12
+    inspection_protocol: "Mandatory pre-commissioning joint multi-department physical inspection before operational clearances."
+  MEDIUM:
+    category_name: "MEDIUM"
+    color_code: "ORANGE"
+    min_score: 40
+    description: "Moderate hazard or scale operation with specific environmental or safety parameters."
+    joint_inspection_mandatory: true
+    inspection_frequency_months: 24
+    inspection_protocol: "Targeted joint inspection coordinated for key safety and environmental clearances."
+  LOW:
+    category_name: "LOW"
+    color_code: "GREEN"
+    min_score: 0
+    description: "Low hazard, non-polluting, or small-scale operation."
+    joint_inspection_mandatory: false
+    inspection_frequency_months: 36
+    inspection_protocol: "Eligible for self-certification or expedited desk verification; exempt from mandatory physical joint visit."
+
+scoring_factors:
+  # 1. Environmental & Pollution Factors (Max 35 points)
+  hazardous_waste:
+    field: "hazardous_waste_generated"
+    weight: 20
+    description: "Generation of toxic/hazardous waste requiring TSDF disposal"
+    trigger_operator: "eq"
+    trigger_value: true
+    department: "State Pollution Control Board (DEMO)"
+    inspection_item: "Hazardous waste storage yard and containment specifications"
+
+  effluent_generation:
+    field: "effluent_generation"
+    weight: 10
+    description: "Discharge of industrial trade effluent"
+    trigger_operator: "eq"
+    trigger_value: true
+    department: "State Pollution Control Board (DEMO)"
+    inspection_item: "Effluent Treatment Plant (ETP) capacity and discharge monitoring"
+
+  air_emissions:
+    field: "air_emissions"
+    weight: 10
+    description: "Industrial flue gas, boiler, or process emissions"
+    trigger_operator: "eq"
+    trigger_value: true
+    department: "State Pollution Control Board (DEMO)"
+    inspection_item: "Chimney stack height, air pollution control devices (APCD), and scrubber installation"
+
+  # 2. Worker Safety & Factory Scale (Max 30 points)
+  high_worker_count:
+    field: "workers_count"
+    weight: 15
+    description: "Workforce headcount >= 50"
+    trigger_operator: "gte"
+    trigger_value: 50
+    department: "Directorate of Industrial Safety & Health (DEMO)"
+    inspection_item: "Occupational health, ventilation, machine guarding, and worker welfare amenities"
+
+  moderate_worker_count:
+    field: "workers_count"
+    weight: 8
+    description: "Workforce headcount between 10 and 49"
+    trigger_operator: "gte"
+    trigger_value: 10
+    department: "Directorate of Industrial Safety & Health (DEMO)"
+    inspection_item: "Basic factory safety, first aid provisions, and machine safety guarding"
+
+  high_tension_power:
+    field: "power_connected_kw"
+    weight: 15
+    description: "Connected electrical load >= 100 kW"
+    trigger_operator: "gte"
+    trigger_value: 100
+    department: "State Electricity Distribution Corporation (DEMO)"
+    inspection_item: "Transformer yard, sub-station switchgear, and earth pit resistance"
+
+  # 3. Fire & Physical Infrastructure (Max 25 points)
+  large_built_up_area:
+    field: "built_up_area_sqm"
+    weight: 15
+    description: "Built-up factory area >= 2000 sqm"
+    trigger_operator: "gte"
+    trigger_value: 2000
+    department: "Fire & Emergency Services (DEMO)"
+    inspection_item: "Fire sprinkler coverage, hydrant risers, emergency evacuation exits, and assembly points"
+
+  moderate_built_up_area:
+    field: "built_up_area_sqm"
+    weight: 10
+    description: "Built-up factory area between 1000 and 1999 sqm"
+    trigger_operator: "gte"
+    trigger_value: 1000
+    department: "Fire & Emergency Services (DEMO)"
+    inspection_item: "Fire extinguishers, setback distances, and exit signage"
+
+  # 4. Critical Environmental Resource Factors (Max 10 points)
+  groundwater_extraction:
+    field: "water_source"
+    weight: 10
+    description: "Groundwater extraction via borewell"
+    trigger_operator: "eq"
+    trigger_value: "borewell"
+    department: "Ground Water Authority (DEMO)"
+    inspection_item: "Digital flow meter installation and rainwater harvesting recharge pits"

@@ -1,0 +1,90 @@
+version: "1.0"
+description: "Synthetic DEMO SLA and escalation configuration for Scenario C: Automotive Manufacturing"
+data_status: "DEMO"
+
+slas:
+  # 1. Industrial Siting / Land Clearance
+  - sla_id: "SLA-DEMO-001"
+    requirement_id: "REQ-SITING-001"
+    duration_days: 21
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 3
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: "supervising_officer"
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA for industrial land siting."
+
+  # 2. Consent to Establish (CTE) - Pollution Control
+  - sla_id: "SLA-DEMO-002"
+    requirement_id: "REQ-ENV-CTE-001"
+    duration_days: 45
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 5
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: "environmental_superintendent"
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA for Consent to Establish."
+
+  # 3. Hazardous Waste Authorization
+  - sla_id: "SLA-DEMO-003"
+    requirement_id: "REQ-HAZ-001"
+    duration_days: 30
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 5
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: "hazardous_waste_nodal_officer"
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA for Hazardous Waste Authorization."
+
+  # 4. Factory Building Plan Approval
+  - sla_id: "SLA-DEMO-004"
+    requirement_id: "REQ-FACTORY-001"
+    duration_days: 30
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 4
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: "chief_inspector_of_factories"
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA for Factory Blueprint Approval."
+
+  # 5. High-Tension (HT) Power Feasibility
+  - sla_id: "SLA-DEMO-005"
+    requirement_id: "REQ-POWER-HT-001"
+    duration_days: 20
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 3
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: "utility_superintending_engineer"
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA for HT Power grid sanction."
+
+  # 6. Fire Safety Provisional NOC
+  - sla_id: "SLA-DEMO-006"
+    requirement_id: "REQ-FIRE-001"
+    duration_days: 15
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 2
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: "divisional_fire_officer"
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA for Fire Safety clearance."
+
+  # 7. Ground Water Abstraction Permission
+  # Demonstrates a configuration where escalation recipient is intentionally omitted
+  # to test deterministic ESCALATION_CONFIGURATION_REQUIRED
+  - sla_id: "SLA-DEMO-007"
+    requirement_id: "REQ-WATER-GW-001"
+    duration_days: 40
+    calendar_type: "calendar_days"
+    warning_threshold: 0.8
+    escalation_threshold_days: 5
+    escalation_level: "LEVEL_1"
+    escalation_recipient_role: null
+    data_status: "DEMO"
+    notes: "Synthetic DEMO SLA with unconfigured escalation recipient."

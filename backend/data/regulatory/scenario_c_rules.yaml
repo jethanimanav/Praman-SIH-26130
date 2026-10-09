@@ -1,0 +1,195 @@
+version: "1.0"
+description: "Synthetic regulatory rules for Scenario C: Automotive Component Manufacturing (DEMO DATA ONLY)"
+data_status: "DEMO"
+
+rules:
+  # 1. Industrial Siting / Land Clearance
+  - id: "RULE-DEMO-001"
+    requirement_id: "REQ-SITING-001"
+    requirement_name: "Industrial Siting & Land Use Clearance (DEMO)"
+    description: "Verification of industrial zoning for manufacturing setup"
+    data_status: "DEMO"
+    condition:
+      all:
+        - field: "sector"
+          operator: "eq"
+          value: "manufacturing"
+        - field: "location.zone_type"
+          operator: "eq"
+          value: "industrial"
+    category_if_matched: "Required"
+    category_if_not_matched: "Conditional"
+    explanation_matched: "Mandatory siting approval for manufacturing unit in an industrial zone."
+    explanation_not_matched: "Unit is not situated in a pre-approved industrial zone or sector differs; special rezoning assessment required."
+    explanation_unknown: "Location zone type or sector is unknown; zoning verification required."
+    department: "Directorate of Industrial Planning (DEMO)"
+    estimated_timeline_days: 21
+    prerequisites: []
+    documents:
+      - "Site Layout Plan"
+      - "Industrial Land Allotment Letter"
+    tags: ["land", "siting", "pre-establishment"]
+
+  # 2. Consent to Establish (CTE) - Air & Water Pollution
+  - id: "RULE-DEMO-002"
+    requirement_id: "REQ-ENV-CTE-001"
+    requirement_name: "Consent to Establish (CTE) - Pollution Control (DEMO)"
+    description: "Environmental clearance prior to setting up manufacturing facility"
+    data_status: "DEMO"
+    condition:
+      any:
+        - field: "effluent_generation"
+          operator: "eq"
+          value: true
+        - field: "air_emissions"
+          operator: "eq"
+          value: true
+        - field: "processes"
+          operator: "in"
+          value: ["electroplating", "heat_treatment", "foundry"]
+    category_if_matched: "Required"
+    category_if_not_matched: "Not Applicable"
+    explanation_matched: "Facility involves polluting processes (effluent, air emissions, or electroplating) requiring Consent to Establish."
+    explanation_not_matched: "No industrial effluent, air emissions, or designated polluting processes identified."
+    explanation_unknown: "Effluent generation, emission status, or specific industrial processes are not specified."
+    department: "State Pollution Control Board (DEMO)"
+    estimated_timeline_days: 45
+    prerequisites:
+      - "REQ-SITING-001"
+    documents:
+      - "Environmental Management Plan (EMP)"
+      - "Effluent Treatment Plant (ETP) Proposal"
+      - "Process Flow Diagram"
+    tags: ["environment", "pollution", "pre-establishment"]
+
+  # 3. Hazardous Waste Authorization
+  - id: "RULE-DEMO-003"
+    requirement_id: "REQ-HAZ-001"
+    requirement_name: "Hazardous Waste Management Authorization (DEMO)"
+    description: "Authorization for storage, handling and disposal of hazardous waste"
+    data_status: "DEMO"
+    condition:
+      all:
+        - field: "processes"
+          operator: "in"
+          value: ["electroplating"]
+        - field: "hazardous_waste_generated"
+          operator: "eq"
+          value: true
+    category_if_matched: "Required"
+    category_if_not_matched: "Not Applicable"
+    explanation_matched: "Electroplating process generates toxic sludge/effluent classified as hazardous waste."
+    explanation_not_matched: "Facility does not generate hazardous waste or conduct electroplating."
+    explanation_unknown: "Hazardous waste generation status is unknown; departmental verification required."
+    department: "Hazardous Waste Regulatory Cell (DEMO)"
+    estimated_timeline_days: 30
+    prerequisites:
+      - "REQ-ENV-CTE-001"
+    documents:
+      - "Hazardous Waste Storage Specifications"
+      - "TSDF Disposal Agreement Draft"
+    tags: ["hazardous-waste", "environment"]
+
+  # 4. Factory Plan Approval & Registration
+  - id: "RULE-DEMO-004"
+    requirement_id: "REQ-FACTORY-001"
+    requirement_name: "Factory Building Plan Approval (DEMO)"
+    description: "Safety and operational approval for factory premises"
+    data_status: "DEMO"
+    condition:
+      all:
+        - field: "workers_count"
+          operator: "gte"
+          value: 10
+        - field: "power_connected_kw"
+          operator: "gt"
+          value: 0
+    category_if_matched: "Required"
+    category_if_not_matched: "Conditional"
+    explanation_matched: "Premises employs 10 or more workers with power connection, qualifying as an industrial factory."
+    explanation_not_matched: "Worker threshold or power usage does not trigger standard factory registration requirements."
+    explanation_unknown: "Worker headcount or electric power connection details are unknown; site assessment required."
+    department: "Directorate of Industrial Safety & Health (DEMO)"
+    estimated_timeline_days: 30
+    prerequisites:
+      - "REQ-SITING-001"
+    documents:
+      - "Structural Stability Certificate"
+      - "Factory Blueprint with Machinery Layout"
+    tags: ["safety", "factory-licensing"]
+
+  # 5. High-Tension High-Demand Power Feasibility
+  - id: "RULE-DEMO-005"
+    requirement_id: "REQ-POWER-HT-001"
+    requirement_name: "High Tension (HT) Power Feasibility & Load Sanction (DEMO)"
+    description: "Electrical infrastructure grid sanction for high load demand"
+    data_status: "DEMO"
+    condition:
+      field: "power_connected_kw"
+      operator: "gte"
+      value: 100
+    category_if_matched: "Required"
+    category_if_not_matched: "Not Applicable"
+    explanation_matched: "Connected electrical load is 100 kW or greater, necessitating High Tension grid feasibility clearance."
+    explanation_not_matched: "Power demand is below 100 kW; standard low-tension commercial supply suffices."
+    explanation_unknown: "Connected power load in kW is unspecified; electricity utility verification required."
+    department: "State Electricity Distribution Corporation (DEMO)"
+    estimated_timeline_days: 20
+    prerequisites:
+      - "REQ-SITING-001"
+    documents:
+      - "Single Line Electrical Diagram"
+      - "Connected Load Breakdown"
+    tags: ["power", "utilities"]
+
+  # 6. Fire Safety NOC
+  - id: "RULE-DEMO-006"
+    requirement_id: "REQ-FIRE-001"
+    requirement_name: "Fire Safety Provisional No-Objection Certificate (DEMO)"
+    description: "Provisional fire safety clearance for industrial unit"
+    data_status: "DEMO"
+    condition:
+      any:
+        - field: "built_up_area_sqm"
+          operator: "gte"
+          value: 1000
+        - field: "hazardous_waste_generated"
+          operator: "eq"
+          value: true
+    category_if_matched: "Required"
+    category_if_not_matched: "Not Applicable"
+    explanation_matched: "Built-up area is >= 1000 sqm or facility handles hazardous materials, triggering mandatory fire clearance."
+    explanation_not_matched: "Built-up area is under 1000 sqm with no hazardous materials indicated."
+    explanation_unknown: "Facility built-up area or hazardous material status is unknown; fire safety inspection required."
+    department: "Fire & Emergency Services (DEMO)"
+    estimated_timeline_days: 15
+    prerequisites:
+      - "REQ-FACTORY-001"
+    documents:
+      - "Fire Hydrant and Extinguisher Layout"
+      - "Building Section and Evacuation Plan"
+    tags: ["fire", "safety"]
+
+  # 7. Ground Water Extraction NOC (Conditional)
+  - id: "RULE-DEMO-007"
+    requirement_id: "REQ-WATER-GW-001"
+    requirement_name: "Ground Water Abstraction Permission (DEMO)"
+    description: "Regulatory permission for borewell or groundwater withdrawal"
+    data_status: "DEMO"
+    condition:
+      field: "water_source"
+      operator: "eq"
+      value: "borewell"
+    category_if_matched: "Required"
+    category_if_not_matched: "Not Applicable"
+    explanation_matched: "Facility relies on groundwater / borewell extraction; Central/State ground water NOC is mandatory."
+    explanation_not_matched: "Water is supplied by industrial park municipal pipeline; groundwater extraction not required."
+    explanation_unknown: "Source of industrial water supply is unknown; resource verification required."
+    department: "Ground Water Authority (DEMO)"
+    estimated_timeline_days: 40
+    prerequisites:
+      - "REQ-SITING-001"
+    documents:
+      - "Hydrogeological Survey Report"
+      - "Rainwater Harvesting Scheme Proposal"
+    tags: ["water", "natural-resources"]

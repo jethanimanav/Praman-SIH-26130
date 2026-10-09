@@ -1,0 +1,128 @@
+# ==============================================================================
+# PRAMAN — Regulatory Orchestration Platform (SIH 2026 PS 26130)
+# Declarative Support Schemes & Subsidies Configuration (Scenario C)
+# Data Status: DEMO
+# ==============================================================================
+
+metadata:
+  scenario: "Scenario C — Electroplating & Automotive Components Manufacturing"
+  version: "1.0.0"
+  description: "Declarative financial subsidies, green incentives, and tax concessions for industrial enterprises"
+  data_status: "DEMO"
+
+schemes:
+  - scheme_id: "SCHEME-CAP-SUBSIDY"
+    name: "Industrial Capital Investment Subsidy (MSME Sector)"
+    department: "Department of Industries and Commerce"
+    category: "CAPITAL_SUBSIDY"
+    description: "Up to 15% state capital investment subsidy on eligible plant and machinery investments for newly established manufacturing units in designated industrial areas."
+    max_benefit_description: "15% of eligible plant & machinery investment (Max ₹50,00,000)"
+    max_amount_inr: 5000000
+    disbursement_mechanism: "Direct Bank Transfer in 2 milestones upon commercial production verification"
+    application_mode: "SINGLE_WINDOW_DIRECT"
+    required_documents:
+      - "Detailed Project Report (DPR) approved by accredited financial institution"
+      - "Chartered Engineer Valuation & Machinery Invoices"
+      - "Udyam MSME Registration Certificate"
+    eligibility_conditions:
+      sector:
+        op: "eq"
+        value: "manufacturing"
+      location_zone_type:
+        op: "in"
+        value: ["industrial", "designated_industrial_area", "notified_estate"]
+    data_status: "DEMO"
+
+  - scheme_id: "SCHEME-GREEN-INCENTIVE"
+    name: "Clean Technology & Effluent Treatment (ZLD) Capital Grant"
+    department: "State Pollution Control Board & Environment Department"
+    category: "GREEN_TRANSITION"
+    description: "25% capital grant on capital expenditure for Zero Liquid Discharge (ZLD) or advanced Effluent Treatment Plant (ETP) systems to achieve zero discharge compliance."
+    max_benefit_description: "25% capex subsidy on ETP/ZLD equipment (Max ₹25,00,000)"
+    max_amount_inr: 2500000
+    disbursement_mechanism: "Direct grant disbursed post-installation and SPCB performance audit"
+    application_mode: "SINGLE_WINDOW_DIRECT"
+    required_documents:
+      - "ETP/ZLD Technical Specification & Design Verification Certificate"
+      - "Consent to Establish (CTE) / SPCB Approval Copy"
+      - "Capital Equipment Purchase Invoices & Proof of Payment"
+    eligibility_conditions:
+      sector:
+        op: "eq"
+        value: "manufacturing"
+      effluent_generation:
+        op: "eq"
+        value: true
+    data_status: "DEMO"
+
+  - scheme_id: "SCHEME-SOLAR-REBATE"
+    name: "Industrial Captive Solar Rooftop Tariff Concession"
+    department: "Renewable Energy Development Agency & State Electricity Board"
+    category: "TARIFF_REBATE"
+    description: "Concessional power tariff rebate of ₹1.50 per kWh on grid-consumed electricity for manufacturing units that install minimum 50 kW captive rooftop solar power plants."
+    max_benefit_description: "₹1.50/kWh tariff concession on monthly electricity bill (Est. ₹7,20,000 / year)"
+    max_amount_inr: 720000
+    disbursement_mechanism: "Credited directly against monthly electricity billing cycles"
+    application_mode: "DEPARTMENTAL_PORTAL"
+    potential_action: "Install a minimum 50 kW captive rooftop solar plant to unlock annual power tariff concessions."
+    missing_fields_hint:
+      - "captive_solar_installed"
+    required_documents:
+      - "Rooftop Structural Stability Certificate"
+      - "Electricity Distribution Company (DISCOM) Grid Synchronization Approval"
+      - "Solar Metering & Capacity Commissioning Certificate"
+    eligibility_conditions:
+      sector:
+        op: "eq"
+        value: "manufacturing"
+      power_connected_kw:
+        op: "gte"
+        value: 100.0
+      captive_solar_installed:
+        op: "eq"
+        value: true
+    data_status: "DEMO"
+
+  - scheme_id: "SCHEME-MSME-SUBVENTION"
+    name: "MSME Working Capital Interest Subvention Scheme"
+    department: "Ministry of Micro, Small and Medium Enterprises"
+    category: "INTEREST_SUBVENTION"
+    description: "2% per annum interest subvention on fresh or active working capital credit facilities from scheduled commercial banks for registered MSME units."
+    max_benefit_description: "2% per annum interest subvention on working capital credit (Max ₹2,00,000 / year)"
+    max_amount_inr: 200000
+    disbursement_mechanism: "Direct subsidy reimbursement credited to borrower credit account via lending bank"
+    application_mode: "SINGLE_WINDOW_DIRECT"
+    required_documents:
+      - "Bank Working Capital Sanction Letter & Repayment Statement"
+      - "Udyam Registration Certificate"
+      - "GST Returns (GSTR-3B) for the preceding two quarters"
+    eligibility_conditions:
+      sector:
+        op: "in"
+        value: ["manufacturing", "services"]
+      workers_count:
+        op: "lte"
+        value: 100
+    data_status: "DEMO"
+
+  - scheme_id: "SCHEME-SAFETY-UPGRADE"
+    name: "Chemical Workplace Hazard Mitigation & Safety Automation Grant"
+    department: "Directorate of Industrial Safety & Health (DISH)"
+    category: "SAFETY_UPGRADE"
+    description: "Reimbursement grant of up to 50% of the cost of installing automated toxic gas monitoring, automatic fire suppression, and chemical spill containment sensors."
+    max_benefit_description: "50% equipment reimbursement grant (Max ₹10,00,000)"
+    max_amount_inr: 1000000
+    disbursement_mechanism: "Single installment reimbursement following physical joint verification"
+    application_mode: "SINGLE_WINDOW_DIRECT"
+    required_documents:
+      - "Hazard Identification & Risk Assessment (HIRA) Audit Report"
+      - "Approved Equipment Calibration & Invoicing Certificates"
+      - "DISH Factory Inspectorate Verification Endorsement"
+    eligibility_conditions:
+      hazardous_waste_generated:
+        op: "eq"
+        value: true
+      workers_count:
+        op: "gte"
+        value: 20
+    data_status: "DEMO"
